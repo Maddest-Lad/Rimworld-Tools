@@ -1,23 +1,28 @@
-.PHONY: install submodules fix lint format check start
+.PHONY: help install submodules fix lint format check test start
 
-# Setup
-install:
+help:  ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-12s %s\n", $$1, $$2}'
+
+install:  ## Sync dependencies
 	uv sync
 
-submodules:
+submodules:  ## Init/update the RimSort reference submodule
 	git submodule update --init --recursive
 
-fix: install
+fix: install  ## Auto-format and auto-fix lint
 	uv run black .
 	uv run ruff check --fix . --unsafe-fixes
 
-lint:
+lint:  ## Check lint
 	uv run ruff check .
 
-format:
+format:  ## Check formatting
 	uv run black --check .
 
-check: lint format
+check: lint format  ## Lint + format checks
 
-start:
-	uv run src/main.py
+test:  ## Run the test suite
+	uv run pytest
+
+start:  ## Run the MCP server (stdio)
+	uv run -m src.rimworld_tools.server

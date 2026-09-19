@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# SteamCMD (downloaded at runtime; keep the binary, drop everything else it generates)
+bin/steamcmd/*
+!bin/steamcmd/steamcmd.exe

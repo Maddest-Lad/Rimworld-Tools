@@ -1,0 +1,29 @@
+[project]
+name = "rimworld-tools"
+version = "0.1.0"
+description = "Tools for interacting with, debugging and modding Rimworld"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+exclude = ["modules/*"]
+
+[dependency-groups]
+dev = [
+    "black>=24.0",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["modules"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+extend-exclude = "modules"

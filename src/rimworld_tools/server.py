@@ -138,13 +138,33 @@ async def resolve_workshop_url(url: str) -> dict[str, Any]:
 
 
 @mcp.tool
-async def workshop_search(query: str, limit: int = 20) -> dict[str, Any]:
+async def workshop_search(
+    query: str = "",
+    limit: int = 20,
+    game_version: str | None = None,
+    include_translations: bool = False,
+    include_scenarios: bool = False,
+    sort: str = "relevance",
+    days: int = 90,
+) -> dict[str, Any]:
     """
-    Text search of the RimWorld Workshop. Needs STEAM_WEB_API_KEY; without one returns a
-    browse_url to open instead.
+    Search the RimWorld Workshop. Defaults filter to Mod items tagged with the installed game
+    version (e.g. 1.6) and exclude Translation/Scenario items; pass game_version="any" to lift it.
+    sort: relevance (needs query) | trend (uses days) | recent | top | updated.
     Example: workshop_search("vanilla expanded framework")
+    Example: workshop_search(sort="trend", days=30, limit=10)
     """
-    return await asyncio.to_thread(workshop.search, Settings.from_env(), query, limit)
+    return await asyncio.to_thread(
+        workshop.search,
+        Settings.from_env(),
+        query,
+        limit,
+        game_version,
+        include_translations,
+        include_scenarios,
+        sort,
+        days,
+    )
 
 
 @mcp.tool

@@ -62,10 +62,14 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | `check_mod_updates(pfids?, include_steam_client=True)` | Local ACF timestamp vs Workshop; returns the outdated list |
 | `collection_expand(url_or_id)` | Mod pfids inside a collection (nested collections filtered) |
 | `resolve_workshop_url(url)` | Pasted URL/id → `{pfid, kind: mod\|collection\|unpublished}` |
-| `workshop_search(query, limit)` | Workshop text search; needs `STEAM_WEB_API_KEY`, else returns a browse URL |
+| `workshop_search(query?, limit, game_version?, include_translations, include_scenarios, sort, days)` | Workshop search. Defaults: `Mod` + installed version tag (e.g. `1.6`), Translation/Scenario excluded. `sort`: relevance\|trend\|recent\|top\|updated. Needs `STEAM_WEB_API_KEY`, else returns an equivalent browse URL |
 | `workshop_delete(pfids)` | Remove dir + both ACF sections + depot manifest, so re-download really downloads |
 
 Typical first session: `rimworld_locate` → `steamcmd_setup` → `workshop_download([...])`.
+
+Steam's `QueryFiles` text search *ranks* rather than filters — a nonsense query still reports `total`
+in the tens of thousands. `workshop_search` adds a hint when no returned title contains a query word;
+`total` is never a match count. Tag filters (`requiredtags`/`excludedtags`) do genuinely filter.
 
 ACF write guards only wait on `steamcmd.exe`. The Steam client rewrites *its own* ACF, never ours, and it
 is usually running — guarding on `steam.exe` would make every write tool permanently refuse.

@@ -149,18 +149,68 @@ def resolve_url(settings: Settings, url: str) -> dict[str, Any]:
     return {"pfid": pfid, "kind": "mod", "title": item["title"]}
 
 
-def search(settings: Settings, query: str, limit: int) -> dict[str, Any]:
+_FALLBACK_GAME_VERSION = "1.6"
+
+
+def detected_game_version(settings: Settings) -> str:
+    """major.minor of the installed game, e.g. '1.6'; falls back if RimWorld isn't found."""
+    v = paths.discover(settings).version
+    if v:
+        parts = v.split(".")
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+            return f"{parts[0]}.{parts[1]}"
+    return _FALLBACK_GAME_VERSION
+
+
+def search(
+    settings: Settings,
+    query: str,
+    limit: int,
+    game_version: str | None,
+    include_translations: bool,
+    include_scenarios: bool,
+    sort: str,
+    days: int,
+) -> dict[str, Any]:
+    if sort not in webapi.SORT_MODES:
+        return {"error": f"Unknown sort {sort!r}.", "hint": f"One of {sorted(webapi.SORT_MODES)}."}
+    if sort == "relevance" and not query.strip():
+        return {"error": "relevance sort needs a query.", "hint": "Use sort='trend' to browse."}
+
+    version = game_version or detected_game_version(settings)
+    required = ["Mod"] + ([version] if version.lower() != "any" else [])
+    excluded = ([] if include_translations else ["Translation"]) + (
+        [] if include_scenarios else ["Scenario"]
+    )
+    filters = {"required_tags": required, "excluded_tags": excluded, "sort": sort}
+    if sort == "trend":
+        filters["days"] = days
+
     if not settings.steam_web_api_key:
         return {
             "query": query,
+            "filters": filters,
             "results": [],
-            "browse_url": webapi.browse_url(query),
+            "browse_url": webapi.browse_url(query, required, excluded, sort, days),
             "hint": "No STEAM_WEB_API_KEY set; open browse_url and pass ids to resolve_workshop_url.",
         }
     try:
-        return webapi.search(query, settings.steam_web_api_key, limit)
+        out = webapi.search(
+            query, settings.steam_web_api_key, limit, required, excluded, sort, days
+        )
     except (requests.RequestException, ValueError) as exc:
         return {"error": webapi.redact(str(exc), settings.steam_web_api_key)}
+    out["filters"] = filters
+    # Steam's text search ranks rather than filters: a nonsense query still returns `total`
+    # in the tens of thousands. Flag it when no returned title contains any query word.
+    tokens = [t for t in query.lower().split() if len(t) > 2]
+    titles = [(r.get("title") or "").lower() for r in out.get("results", [])]
+    if tokens and titles and not any(t in title for t in tokens for title in titles):
+        out["hint"] = (
+            "No returned title contains a query word; treat this as no match. "
+            "`total` is Steam's ranked candidate count, not a match count."
+        )
+    return out
 
 
 def _delete_manifests(settings: Settings, manifests: set[str]) -> list[str]:

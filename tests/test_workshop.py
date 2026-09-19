@@ -136,8 +136,92 @@ class TestDelete:
         assert (elsewhere / "keep.txt").exists()
 
 
-class TestSearchDegrades:
-    def test_no_key_returns_browse_url(self, tmp_path: Path) -> None:
-        out = workshop.search(_settings(tmp_path), "harmony patch", 10)
+def _search(s: Settings, query: str, **kw: Any) -> dict[str, Any]:
+    args = {
+        "limit": 5,
+        "game_version": "1.6",
+        "include_translations": False,
+        "include_scenarios": False,
+        "sort": "relevance",
+        "days": 90,
+    }
+    args.update(kw)
+    return workshop.search(s, query, **args)
+
+
+class TestSearch:
+    def test_no_key_returns_browse_url_with_filters(self, tmp_path: Path) -> None:
+        out = _search(_settings(tmp_path), "harmony patch")
         assert out["results"] == []
-        assert "searchtext=harmony%20patch" in out["browse_url"]
+        url = out["browse_url"]
+        assert "searchtext=harmony%20patch" in url
+        assert "requiredtags%5B%5D=Mod" in url and "requiredtags%5B%5D=1.6" in url
+        assert "excludedtags%5B%5D=Translation" in url and "excludedtags%5B%5D=Scenario" in url
+        assert out["filters"]["required_tags"] == ["Mod", "1.6"]
+
+    def test_defaults_and_overrides_reach_the_api(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        s = Settings(**{**_settings(tmp_path).__dict__, "steam_web_api_key": "k"})
+        seen: dict[str, Any] = {}
+
+        def fake(q, k, n, required, excluded, sort, days):
+            seen.update(required=required, excluded=excluded, sort=sort, days=days)
+            return {"query": q, "total": 1, "results": [{"title": q}]}
+
+        monkeypatch.setattr(webapi, "search", fake)
+        _search(s, "harmony")
+        assert seen == {
+            "required": ["Mod", "1.6"],
+            "excluded": ["Translation", "Scenario"],
+            "sort": "relevance",
+            "days": 90,
+        }
+        _search(
+            s,
+            "",
+            game_version="any",
+            include_translations=True,
+            include_scenarios=True,
+            sort="trend",
+            days=30,
+        )
+        assert seen == {"required": ["Mod"], "excluded": [], "sort": "trend", "days": 30}
+
+    def test_relevance_needs_query_and_bad_sort_is_error(self, tmp_path: Path) -> None:
+        s = Settings(**{**_settings(tmp_path).__dict__, "steam_web_api_key": "k"})
+        assert "needs a query" in _search(s, "")["error"]
+        assert "Unknown sort" in _search(s, "x", sort="bogus")["error"]
+
+    def test_flags_ranked_nonmatch(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Steam returns ~the whole Workshop for nonsense queries; the tool must say so."""
+        s = Settings(**{**_settings(tmp_path).__dict__, "steam_web_api_key": "k"})
+        monkeypatch.setattr(
+            webapi,
+            "search",
+            lambda q, *a: {
+                "query": q,
+                "total": 38545,
+                "results": [{"title": "Harmony"}, {"title": "HugsLib"}],
+            },
+        )
+        assert "no match" in _search(s, "zzzqqq nonsense")["hint"]
+        assert "hint" not in _search(s, "harmony")
+
+
+class TestGameVersion:
+    def test_major_minor_from_install(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.rimworld_tools import paths
+
+        monkeypatch.setattr(
+            paths, "discover", lambda _s: paths.RimWorldPaths(version="1.6.4871 rev590")
+        )
+        assert workshop.detected_game_version(_settings(tmp_path)) == "1.6"
+
+    def test_fallback_when_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.rimworld_tools import paths
+
+        monkeypatch.setattr(paths, "discover", lambda _s: paths.RimWorldPaths())
+        assert workshop.detected_game_version(_settings(tmp_path)) == "1.6"

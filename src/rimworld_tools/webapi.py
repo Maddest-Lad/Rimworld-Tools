@@ -20,10 +20,14 @@ _COLLECTION_URL = f"{_API}/ISteamRemoteStorage/GetCollectionDetails/v1/"
 _QUERY_FILES_URL = f"{_API}/IPublishedFileService/QueryFiles/v1/"
 _ITEM_PAGE = "https://steamcommunity.com/sharedfiles/filedetails/?id="
 _COLLECTION_PAGE = "https://steamcommunity.com/workshop/filedetails/?id="
-_BROWSE_URL = (
-    f"https://steamcommunity.com/workshop/browse/?appid={RIMWORLD_APP_ID}"
-    "&browsesort=textsearch&section=readytouseitems&searchtext="
-)
+_BROWSE_URL = f"https://steamcommunity.com/workshop/browse/?appid={RIMWORLD_APP_ID}"
+_BROWSE_SORT = {
+    "relevance": "textsearch",
+    "trend": "trend",
+    "recent": "mostrecent",
+    "top": "toprated",
+    "updated": "lastupdated",
+}
 _PRIVATE_SENTINEL = "There was a problem accessing the item. "  # trailing space is real
 
 FILE_DETAILS_CHUNK = 300
@@ -31,7 +35,16 @@ COLLECTION_CHUNK = 5000
 _RETRYABLE = {429, 500, 502, 503, 504}
 _ATTEMPTS = 3
 _TIMEOUT = (5, 60)
-_RANKED_BY_TEXT_SEARCH = 12
+
+# EPublishedFileQueryType values QueryFiles accepts.
+SORT_MODES = {
+    "relevance": 12,  # RankedByTextSearch — needs search_text
+    "trend": 3,  # RankedByTrend — uses `days`
+    "recent": 1,  # RankedByPublicationDate
+    "top": 0,  # RankedByVote
+    "updated": 21,  # RankedByLastUpdatedDate
+}
+
 
 _URL_ID_RE = re.compile(r"[?&]id=(\d+)")
 
@@ -162,20 +175,35 @@ def parse_workshop_url(raw: str) -> str | None:
     return None
 
 
-def search(query: str, key: str, limit: int = 20) -> dict[str, Any]:
-    """QueryFiles text search. Requires an API key; caller degrades to browse_url without one."""
-    params = {
+def search(
+    query: str,
+    key: str,
+    limit: int = 20,
+    required_tags: list[str] | None = None,
+    excluded_tags: list[str] | None = None,
+    sort: str = "relevance",
+    days: int = 90,
+) -> dict[str, Any]:
+    """QueryFiles with tag filters. Requires an API key; caller degrades to browse_url without one."""
+    params: dict[str, Any] = {
         "key": key,
-        "query_type": _RANKED_BY_TEXT_SEARCH,
+        "query_type": SORT_MODES[sort],
         "appid": RIMWORLD_APP_ID,
         "creator_appid": RIMWORLD_APP_ID,
         "search_text": query,
         "numperpage": max(1, min(100, limit)),
         "filetype": 0,
+        "match_all_tags": "true",
         "return_metadata": "true",
         "return_tags": "true",
         "format": "json",
     }
+    if sort == "trend":
+        params["days"] = days
+    for i, tag in enumerate(required_tags or []):
+        params[f"requiredtags[{i}]"] = tag
+    for i, tag in enumerate(excluded_tags or []):
+        params[f"excludedtags[{i}]"] = tag
     with requests.Session() as s:
         resp = s.get(_QUERY_FILES_URL, params=params, timeout=_TIMEOUT)
     if resp.status_code == 403:
@@ -193,8 +221,23 @@ def search(query: str, key: str, limit: int = 20) -> dict[str, Any]:
     return {"query": query, "total": body.get("total"), "results": results}
 
 
-def browse_url(query: str) -> str:
-    return _BROWSE_URL + requests.utils.quote(query)
+def browse_url(
+    query: str,
+    required_tags: list[str] | None = None,
+    excluded_tags: list[str] | None = None,
+    sort: str = "relevance",
+    days: int = 90,
+) -> str:
+    q = f"{_BROWSE_URL}&browsesort={_BROWSE_SORT[sort]}&section=readytouseitems&p=1&num_per_page=30"
+    if sort == "trend":
+        q += f"&days={days}"
+    if query:
+        q += "&searchtext=" + requests.utils.quote(query)
+    for tag in required_tags or []:
+        q += "&requiredtags%5B%5D=" + requests.utils.quote(tag)
+    for tag in excluded_tags or []:
+        q += "&excludedtags%5B%5D=" + requests.utils.quote(tag)
+    return q
 
 
 def collection_url(pfid: str) -> str:

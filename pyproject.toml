@@ -12,6 +12,7 @@ dependencies = [
     "networkx>=3.3",
     "beautifulsoup4>=4.12",
     "lxml>=5.2",
+    "psutil>=6.0",
 ]
 
 [tool.uv]

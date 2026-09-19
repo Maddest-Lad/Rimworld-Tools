@@ -19,5 +19,12 @@ Thumbs.db
 bin/steamcmd/*
 !bin/steamcmd/steamcmd.exe
 
+# SteamCMD force_install_dir: holds the ACF and a junction INTO the real Mods folder.
+# Git on Windows recurses through junctions, so this must never be staged.
+bin/steam/
+
+# Synced community databases
+bin/dbs/
+
 # Local
 docs/

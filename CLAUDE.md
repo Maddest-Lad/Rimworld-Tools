@@ -41,7 +41,28 @@ All settings are env vars read by `src/rimworld_tools/config.py`; there is no co
 
 ## Tools
 
-None yet — Phase 0 (scaffold) is complete. See the implementation plan for the tool surface.
+| Tool | Purpose |
+|---|---|
+| `rimworld_locate()` | Find game, Mods, config and Workshop dirs, each with provenance |
+| `steamcmd_status()` | Health check: installed? junction OK? ACF item count? Steam running? |
+| `steamcmd_setup(force_reinstall, force_junction)` | Install SteamCMD + junction its output dir to Mods. Idempotent |
+| `workshop_download(pfids, validate, clear_depot_cache)` | Download/update mods into Mods. Blocks; batches of 25; per-item results |
+| `clear_depot_cache()` | First remediation for downloads that succeed but write nothing |
+| `acf_repair(dry_run=True)` | Drop ACF entries with no directory on disk. Refuses while Steam runs |
+
+Typical first session: `rimworld_locate` → `steamcmd_setup` → `workshop_download([...])`.
+
+Layout under the prefix (`bin/` by default):
+
+```
+bin/steamcmd/            SteamCMD itself; steamcmd.exe is tracked, the rest is gitignored
+bin/steam/               force_install_dir — gitignored, contains a junction into the real Mods dir
+  steamapps/workshop/appworkshop_294100.acf
+  steamapps/workshop/content/294100  -> <RimWorld>/Mods   (NTFS junction)
+```
+
+`workshop_delete` (Phase 3) must purge BOTH ACF sections and the `depotcache/294100_<manifest>.manifest`
+file, or SteamCMD will silently refuse to re-download the item.
 
 ## Implementation notes
 

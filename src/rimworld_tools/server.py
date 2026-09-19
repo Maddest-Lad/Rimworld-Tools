@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import acf, paths, steamcmd
+from . import acf, paths, steamcmd, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,70 @@ async def acf_repair(dry_run: bool = True) -> dict[str, Any]:
     return await asyncio.to_thread(
         acf.repair, settings.acf_path, settings.workshop_content_dir, dry_run
     )
+
+
+@mcp.tool
+async def workshop_mod_info(pfids: list[str | int]) -> dict[str, Any]:
+    """
+    Title, update time, size, tags and unpublished flag for Workshop items. Keyless.
+    Chunked at 300; a failed chunk never discards the rest.
+    Example: workshop_mod_info(["2009463077"])
+    """
+    return await asyncio.to_thread(workshop.mod_info, Settings.from_env(), pfids)
+
+
+@mcp.tool
+async def check_mod_updates(
+    pfids: list[str | int] | None = None, include_steam_client: bool = True
+) -> dict[str, Any]:
+    """
+    Compare each installed item's ACF timestamp with the Workshop's. Defaults to everything
+    installed via SteamCMD and (optionally) the Steam client. Returns the outdated pfid list.
+    Example: check_mod_updates()
+    """
+    return await asyncio.to_thread(
+        workshop.check_updates, Settings.from_env(), pfids, include_steam_client
+    )
+
+
+@mcp.tool
+async def collection_expand(collection_url_or_id: str) -> dict[str, Any]:
+    """
+    List the mods inside a Workshop collection (nested collections are filtered out).
+    Example: collection_expand("https://steamcommunity.com/sharedfiles/filedetails/?id=2896394545")
+    """
+    return await asyncio.to_thread(
+        workshop.expand_collection, Settings.from_env(), collection_url_or_id
+    )
+
+
+@mcp.tool
+async def resolve_workshop_url(url: str) -> dict[str, Any]:
+    """
+    Turn a pasted Workshop URL or id into {pfid, kind: mod|collection|unpublished}.
+    Example: resolve_workshop_url("https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077")
+    """
+    return await asyncio.to_thread(workshop.resolve_url, Settings.from_env(), url)
+
+
+@mcp.tool
+async def workshop_search(query: str, limit: int = 20) -> dict[str, Any]:
+    """
+    Text search of the RimWorld Workshop. Needs STEAM_WEB_API_KEY; without one returns a
+    browse_url to open instead.
+    Example: workshop_search("vanilla expanded framework")
+    """
+    return await asyncio.to_thread(workshop.search, Settings.from_env(), query, limit)
+
+
+@mcp.tool
+async def workshop_delete(pfids: list[str | int]) -> dict[str, Any]:
+    """
+    Delete SteamCMD-managed mods: removes the folder, purges both ACF sections and the depot
+    manifest so a later re-download actually downloads. Refuses while steamcmd.exe is running.
+    Example: workshop_delete(["2009463077"])
+    """
+    return await asyncio.to_thread(workshop.delete, Settings.from_env(), pfids)
 
 
 def main() -> None:

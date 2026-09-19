@@ -27,9 +27,18 @@ Register with an MCP client:
 }
 ```
 
+## Secrets — never read `.env`
+
+**Never open, read, cat, grep, print, or otherwise view `.env`** (or any `.env.*` file). It holds
+`STEAM_WEB_API_KEY`. This applies to every tool: Read, Bash, Grep, Glob output, subagents — all of
+them. If a task seems to need the key's value, it doesn't: the code reads it from the environment and
+never returns it. If `.env` shows up in a diff, `git status`, or an error message, do not inspect its
+contents. `.env-template` is the only env file that may be read or edited.
+
 ## Configuration
 
-All settings are env vars read by `src/rimworld_tools/config.py`; there is no config file.
+All settings are env vars read by `src/rimworld_tools/config.py`. A `.env` at the repo root is
+loaded on startup (copy `.env-template`); variables already set in the environment take precedence.
 
 | Var | Default | Purpose |
 |---|---|---|
@@ -48,9 +57,18 @@ All settings are env vars read by `src/rimworld_tools/config.py`; there is no co
 | `steamcmd_setup(force_reinstall, force_junction)` | Install SteamCMD + junction its output dir to Mods. Idempotent |
 | `workshop_download(pfids, validate, clear_depot_cache)` | Download/update mods into Mods. Blocks; batches of 25; per-item results |
 | `clear_depot_cache()` | First remediation for downloads that succeed but write nothing |
-| `acf_repair(dry_run=True)` | Drop ACF entries with no directory on disk. Refuses while Steam runs |
+| `acf_repair(dry_run=True)` | Drop ACF entries with no directory on disk. Refuses while steamcmd.exe runs |
+| `workshop_mod_info(pfids)` | Title/updated/size/tags/unpublished from the Workshop. Keyless, 300/chunk |
+| `check_mod_updates(pfids?, include_steam_client=True)` | Local ACF timestamp vs Workshop; returns the outdated list |
+| `collection_expand(url_or_id)` | Mod pfids inside a collection (nested collections filtered) |
+| `resolve_workshop_url(url)` | Pasted URL/id → `{pfid, kind: mod\|collection\|unpublished}` |
+| `workshop_search(query, limit)` | Workshop text search; needs `STEAM_WEB_API_KEY`, else returns a browse URL |
+| `workshop_delete(pfids)` | Remove dir + both ACF sections + depot manifest, so re-download really downloads |
 
 Typical first session: `rimworld_locate` → `steamcmd_setup` → `workshop_download([...])`.
+
+ACF write guards only wait on `steamcmd.exe`. The Steam client rewrites *its own* ACF, never ours, and it
+is usually running — guarding on `steam.exe` would make every write tool permanently refuse.
 
 Layout under the prefix (`bin/` by default):
 
@@ -61,7 +79,7 @@ bin/steam/               force_install_dir — gitignored, contains a junction i
   steamapps/workshop/content/294100  -> <RimWorld>/Mods   (NTFS junction)
 ```
 
-`workshop_delete` (Phase 3) must purge BOTH ACF sections and the `depotcache/294100_<manifest>.manifest`
+`workshop_delete` purges BOTH ACF sections and the `depotcache/294100_<manifest>.manifest`
 file, or SteamCMD will silently refuse to re-download the item.
 
 ## Implementation notes

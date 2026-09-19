@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 RIMWORLD_APP_ID = 294100
 
 RIMWORLD_APP_IDS: dict[str, int] = {
@@ -16,6 +18,9 @@ RIMWORLD_APP_IDS: dict[str, int] = {
 }
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Real environment wins over .env so a shell export or MCP client `env` block can override it.
+load_dotenv(REPO_ROOT / ".env", override=False)
 
 STEAMCMD_BATCH_SIZE = 25
 

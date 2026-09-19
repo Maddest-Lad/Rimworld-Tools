@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 _INSTALLED = "WorkshopItemsInstalled"
 _DETAILS = "WorkshopItemDetails"
-_STEAM_PROCESSES = {"steamcmd.exe", "steam.exe"}
+STEAMCMD_PROCESSES = frozenset({"steamcmd.exe"})
+STEAM_CLIENT_PROCESSES = frozenset({"steam.exe"})
 
 
 @dataclass(frozen=True)
@@ -111,15 +112,18 @@ def orphans(data: dict, content_dir: Path) -> list[str]:
     return sorted(recorded - on_disk, key=int)
 
 
-def steam_processes_running() -> list[str]:
-    """Names of running Steam/SteamCMD processes. Both rewrite the ACF on exit."""
+def steam_processes_running(
+    names: frozenset[str] = STEAMCMD_PROCESSES | STEAM_CLIENT_PROCESSES,
+) -> list[str]:
+    """Running processes among `names`. A process rewrites its own ACF on exit, so writes
+    to the SteamCMD ACF need only wait for steamcmd.exe, not the Steam client."""
     running: list[str] = []
     for proc in psutil.process_iter(["name"]):
         try:
             name = (proc.info["name"] or "").lower()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-        if name in _STEAM_PROCESSES:
+        if name in names:
             running.append(name)
     return sorted(set(running))
 
@@ -133,10 +137,10 @@ def repair(path: Path, content_dir: Path, dry_run: bool = True) -> dict:
     out: dict = {"orphans": found, "removed": False, "dry_run": dry_run}
     if dry_run or not found:
         return out
-    running = steam_processes_running()
+    running = steam_processes_running(STEAMCMD_PROCESSES)
     if running:
         out["error"] = f"Refusing to write the ACF while {', '.join(running)} is running."
-        out["hint"] = "Both rewrite the file on exit and would discard the repair. Close them."
+        out["hint"] = "SteamCMD rewrites the file on exit and would discard the repair."
         return out
     remove_items(data, found)
     backup = save(path, data)

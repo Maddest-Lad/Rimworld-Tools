@@ -93,7 +93,7 @@ class TestOrphans:
     def test_repair_writes_with_backup(
         self, acf_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(acf, "steam_processes_running", list)
+        monkeypatch.setattr(acf, "steam_processes_running", lambda *_: [])
         content = tmp_path / "content"
         (content / "111").mkdir(parents=True)
         out = acf.repair(acf_file, content, dry_run=False)
@@ -104,7 +104,7 @@ class TestOrphans:
     def test_refuses_while_steam_running(
         self, acf_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(acf, "steam_processes_running", lambda: ["steam.exe"])
+        monkeypatch.setattr(acf, "steam_processes_running", lambda *_: ["steamcmd.exe"])
         out = acf.repair(acf_file, tmp_path / "content", dry_run=False)
         assert "Refusing" in out["error"]
         assert out["removed"] is False

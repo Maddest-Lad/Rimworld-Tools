@@ -7,6 +7,7 @@ import pytest
 import requests
 
 from src.rimworld_tools import webapi
+from src.rimworld_tools.cache import Cache
 
 KEY = "0123456789ABCDEF0123456789ABCDEF"
 
@@ -40,6 +41,48 @@ class FakePoster:
 
 
 class TestFileDetails:
+    def test_description_is_opt_in_without_mutating_cache(self, tmp_path, monkeypatch):
+        fake = FakePoster(
+            [
+                {
+                    "response": {
+                        "publishedfiledetails": [
+                            _details("1", description="[b]Full description[/b]")
+                        ]
+                    }
+                }
+            ]
+        )
+        monkeypatch.setattr(webapi, "_post_with_retry", fake)
+        cache = Cache(tmp_path)
+        assert "description" not in webapi.file_details(["1"], cache=cache).items["1"]
+        rich = webapi.file_details(["1"], cache=cache, include_description=True)
+        assert rich.items["1"]["description"] == "[b]Full description[/b]"
+        assert "description" not in webapi.file_details(["1"], cache=cache).items["1"]
+        assert cache.lookup("file_details", ["1"]).hits["1"]["description"]
+        assert len(fake.calls) == 1
+
+    def test_description_refetches_legacy_cache(self, tmp_path, monkeypatch):
+        cache = Cache(tmp_path)
+        cache.store("file_details", {"1": webapi._normalise(_details("1"))})
+        fake = FakePoster(
+            [
+                {
+                    "response": {
+                        "publishedfiledetails": [
+                            _details("1", description="New"),
+                            _details("2", result=9),
+                        ]
+                    }
+                }
+            ]
+        )
+        monkeypatch.setattr(webapi, "_post_with_retry", fake)
+        result = webapi.file_details(["1", "2"], cache=cache, include_description=True)
+        assert result.items["1"]["description"] == "New"
+        assert result.items["2"]["description"] is None
+        assert not result.cache.hits
+
     def test_unpublished_is_result_not_equal_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
         fake = FakePoster(
             [{"response": {"publishedfiledetails": [_details("1"), _details("2", result=9)]}}]

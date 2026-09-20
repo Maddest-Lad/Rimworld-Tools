@@ -116,6 +116,7 @@ def file_details(
     key: str | None = None,
     cache: cache_mod.Cache | None = None,
     refresh: bool = False,
+    include_description: bool = False,
 ) -> ChunkedResult:
     """GetPublishedFileDetails, chunked at 300. Keyless. Partial results survive a bad chunk.
 
@@ -126,6 +127,12 @@ def file_details(
     to_fetch = list(pfids)
     if cache is not None:
         out.cache = cache.lookup("file_details", pfids, refresh=refresh)
+        if include_description:
+            for pfid, item in list(out.cache.hits.items()):
+                if "description" not in item:
+                    del out.cache.hits[pfid]
+                    del out.cache.cached_at[pfid]
+                    out.cache.misses.append(pfid)
         out.items.update(out.cache.hits)
         to_fetch = out.cache.misses
     fetched: dict[str, dict[str, Any]] = {}
@@ -143,11 +150,17 @@ def file_details(
         for entry in body.get("response", {}).get("publishedfiledetails", []):
             if isinstance(entry, dict) and entry.get("publishedfileid"):
                 item = _normalise(entry)
+                item["description"] = entry.get("description")
                 out.items[item["pfid"]] = item
                 fetched[item["pfid"]] = item
         out.failed_ids.extend(p for p in chunk if p not in out.items)
     if cache is not None:
         cache.store("file_details", fetched)
+    if not include_description:
+        out.items = {
+            p: {k: v for k, v in item.items() if k != "description"}
+            for p, item in out.items.items()
+        }
     return out
 
 

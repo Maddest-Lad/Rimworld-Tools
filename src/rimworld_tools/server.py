@@ -72,14 +72,19 @@ async def list_installed_mods(
 
 
 @mcp.tool
-async def workshop_mod_info(pfids: list[str | int], refresh: bool = False) -> dict[str, Any]:
+async def workshop_mod_info(
+    pfids: list[str | int], refresh: bool = False, include_description: bool = False
+) -> dict[str, Any]:
     """
     Title, update time, size, tags and unpublished flag for Workshop items. Keyless.
+    include_description=true adds the full Workshop description (Steam BBCode).
     Cached per item for 6h; responses say what came from cache and when. refresh=true refetches.
     Example: workshop_mod_info(["2009463077"])
     """
     await runtime.get().ensure_community_data()
-    return await asyncio.to_thread(workshop.mod_info, _settings(), pfids, refresh)
+    return await asyncio.to_thread(
+        workshop.mod_info, _settings(), pfids, refresh, include_description
+    )
 
 
 @mcp.tool

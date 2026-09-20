@@ -37,11 +37,18 @@ def _cache(settings: Settings) -> cache_mod.Cache:
     return cache_mod.Cache(settings.cache_dir)
 
 
-def mod_info(settings: Settings, pfids: list[str | int], refresh: bool = False) -> dict[str, Any]:
+def mod_info(
+    settings: Settings,
+    pfids: list[str | int],
+    refresh: bool = False,
+    include_description: bool = False,
+) -> dict[str, Any]:
     good, bad = steamcmd._normalise_pfids(pfids)
     if not good:
         return {"error": "No valid published file ids given.", "hint": "Pass numeric pfids."}
-    res = webapi.file_details(good, settings.steam_web_api_key, _cache(settings), refresh)
+    res = webapi.file_details(
+        good, settings.steam_web_api_key, _cache(settings), refresh, include_description
+    )
     ctx = advisories.Context.load(settings, detected_game_version(settings))
     items = []
     for item in res.items.values():

@@ -1,31 +1,21 @@
 # Rimworld-Tools
 
-A RimWorld MCP server using Steam client subscriptions for Workshop file management,
-plus future skills for modding and debugging.
+A RimWorld MCP server for Windows 10 LTSC. Steam Client API owns Workshop queries and
+subscriptions; local modules handle inventory, advisories, modlists and sorting.
 
 ## Running
 
 ```sh
 make install    # uv sync
+make config     # print registration snippets without writing files
 make start      # run the MCP server over stdio
 make test       # pytest
 make check      # ruff + black
 make help       # list targets
 ```
 
-Register with an MCP client:
-
-```json
-{
-  "mcpServers": {
-    "rimworld-tools": {
-      "command": "uv",
-      "args": ["run", "-m", "src.rimworld_tools.server"],
-      "cwd": "C:\\Users\\sam\\Desktop\\Projects\\Rimworld-Tools"
-    }
-  }
-}
-```
+Use `make config` for registration snippets using the current repository path. Keep the server
+entry point `src.rimworld_tools.server` compatible with those snippets.
 
 ## Secrets — never read `.env`
 
@@ -82,6 +72,25 @@ copy with the same id. No legacy runtime directories or user mod files are migra
 
 ## Implementation notes
 
+### Module boundaries
+
+| Module | Responsibility |
+|---|---|
+| `server.py` | MCP declarations and startup |
+| `runtime.py` | Settings, mutation coordination and community database preparation |
+| `workshop.py`, `subscriptions.py` | Tool results, validation and advisory composition |
+| `workshop_queries.py`, `cache.py` | Account-scoped metadata/search caching and freshness |
+| `steam_transport.py` | Structured helper requests, output validation, timeouts and process cleanup |
+| `steam_client.py`, `steam_types.py` | Native bindings, ABI layouts, session/query handles and callbacks |
+| `workshop_ids.py` | Shared id validation and Workshop URL parsing |
+| `paths.py`, `mods.py` | Windows discovery, local inventory and About.xml parsing |
+| `modlist.py`, `sorting.py` | Selected-copy resolution, snapshots, guarded writes and pure sorting |
+| `db.py`, `advisories.py` | Community data synchronization and actionable advisories |
+| `filesystem.py`, `processes.py`, `locking.py` | Small Windows filesystem, process and locking utilities |
+| `maintenance.py` | Explicit status, database sync and cache clearing commands |
+
+### Working rules
+
 - **`modules/RimSort` is GPL-3.0 and read-only reference.** Never import, vendor, or copy from it.
   Knowledge was extracted clean-room into `docs/research/` (gitignored, local-only); consult those
   docs rather than re-reading RimSort source. Exact literals (command flags, API URLs, registry
@@ -96,6 +105,12 @@ copy with the same id. No legacy runtime directories or user mod files are migra
 - **No tool emits a warning the community databases can resolve** — resolve it first and return one
   actionable line (see the advisory layer).
 - `from __future__ import annotations` everywhere; modern `X | None`.
+- Use discrete commits and lightweight comments explaining constraints rather than restating code.
+- Test native mutations with mocks. Live subscription changes require a specifically authorized
+  item; do not use the user's existing modlist as a mutation test fixture. Keep read-only integration
+  checks separate from ordinary tests and report which checks were actually run.
+- Never expose native stdout on the MCP stream. Reap owned helpers on timeout/cancellation, release
+  query handles, and distinguish confirmed changes from uncertain outcomes.
 
 ### About.xml parsing (`mods.py`)
 
@@ -119,7 +134,7 @@ Synced into `bin/dbs/<name>/` from GitHub zips. Branches differ and are a 404 ha
 | DB | Trusted for |
 |---|---|
 | Steam Workshop DB (`steamDB.json`, ~48MB, ~58k entries) | packageId↔pfid mapping, display names, `blacklist` comments, dependency names |
-| Community Rules | `loadAfter`/`loadBefore`/`loadTop`/`loadBottom` (Phase 6) |
+| Community Rules | `loadAfter`/`loadBefore`/`loadTop`/`loadBottom` |
 | Use This Instead (`replacements.json.gz`, a **list** keyed by `oldWorkshopId`) | "abandoned → maintained fork" |
 | No Version Warning (**versioned subdirs only**, `1.6/ModIdsToFix.xml`; no root file) | suppressing false `version_mismatch` |
 

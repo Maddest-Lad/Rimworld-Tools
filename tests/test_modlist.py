@@ -41,6 +41,10 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     for p in (data, modsd, ws, cfg):
         p.mkdir(parents=True)
     (cfg / "ModsConfig.xml").write_text(MODS_CONFIG, encoding="utf-8")
+    (tmp_path / "dbs" / "community_rules").mkdir(parents=True)
+    (tmp_path / "dbs" / "community_rules" / "communityRules.json").write_text(
+        '{"rules": {}}', encoding="utf-8"
+    )
 
     def mk(root: Path, folder: str, pid: str, extra: str = "") -> None:
         (root / folder / "About").mkdir(parents=True)
@@ -134,6 +138,13 @@ class TestPrepare:
 
 
 class TestSortModlist:
+    def test_write_refuses_without_community_rules(self, world: Settings) -> None:
+        import shutil
+
+        shutil.rmtree(world.db_dir / "community_rules")
+        out = modlist.sort_modlist(world, dry_run=False)
+        assert "unavailable" in out["error"]
+
     def test_dry_run_orders_without_writing(self, world: Settings) -> None:
         before = modlist.config_path(world).read_text(encoding="utf-8")  # type: ignore[union-attr]
         out = modlist.sort_modlist(world, dry_run=True)

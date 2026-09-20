@@ -303,6 +303,11 @@ def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
     prep = prepare(settings)
     if isinstance(prep, dict):
         return prep
+    if not dry_run and db.community_rules(settings) is None:
+        return {
+            "error": "Community load-order rules are unavailable, so the active list was not changed.",
+            "hint": "Reconnect and retry, or run the maintenance command `db-sync` first.",
+        }
     result = sorting.sort(list(prep.resolved), prep.compiled, prep.names)
     out: dict[str, Any] = {
         "dry_run": dry_run,

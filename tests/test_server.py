@@ -12,3 +12,10 @@ async def test_every_tool_has_a_model_facing_docstring() -> None:
     """Tool docstrings are the description the model sees, so they must exist."""
     for tool in await mcp.list_tools():
         assert tool.description, f"{tool.name} has no description"
+
+
+async def test_default_surface_excludes_maintenance_tools() -> None:
+    names = {tool.name for tool in await mcp.list_tools()}
+    assert len(names) == 13
+    assert {"steamcmd_setup", "db_sync", "acf_repair", "cache_clear"}.isdisjoint(names)
+    assert "environment_status" in names

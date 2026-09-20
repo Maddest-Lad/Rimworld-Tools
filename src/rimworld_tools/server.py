@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import acf, cache, db, modlist, mods, paths, runtime, steamcmd, workshop
+from . import modlist, mods, paths, runtime, steamcmd, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -19,34 +19,6 @@ def _settings() -> Settings:
 
 
 @mcp.tool
-async def rimworld_locate() -> dict[str, Any]:
-    """
-    Find the RimWorld install, Mods folder, config folder and Steam Workshop content folder.
-    Each result carries the provenance of how it was found; nulls mean it could not be located.
-    Example: rimworld_locate()
-    """
-    settings = _settings()
-    found = await asyncio.to_thread(paths.discover, settings)
-    result = found.to_dict()
-    if found.game_dir is None:
-        result["hint"] = (
-            "RimWorld was not found. Set RIMWORLD_TOOLS_MODS_DIR to the Mods folder, "
-            "or install RimWorld via Steam so libraryfolders.vdf lists AppID 294100."
-        )
-    return result
-
-
-@mcp.tool
-async def steamcmd_status() -> dict[str, Any]:
-    """
-    Cheap health check: is SteamCMD installed, is the Workshop junction pointing at the Mods
-    folder, how many items does the ACF record. Call this before download/delete tools.
-    Example: steamcmd_status()
-    """
-    return await asyncio.to_thread(steamcmd.status, _settings())
-
-
-@mcp.tool
 async def environment_status() -> dict[str, Any]:
     """
     Show RimWorld discovery plus SteamCMD readiness in one compact read-only result.
@@ -56,19 +28,6 @@ async def environment_status() -> dict[str, Any]:
     status = await asyncio.to_thread(steamcmd.status, settings)
     status["rimworld"] = (await asyncio.to_thread(paths.discover, settings)).to_dict()
     return status
-
-
-@mcp.tool
-async def steamcmd_setup(
-    force_reinstall: bool = False, force_junction: bool = False
-) -> dict[str, Any]:
-    """
-    Install SteamCMD into the prefix and junction its Workshop output folder to the Mods folder.
-    Idempotent. A fresh install also runs SteamCMD's self-update, which takes ~30-60s.
-    force_junction replaces whatever occupies the junction path; force_reinstall re-downloads.
-    Example: steamcmd_setup()
-    """
-    return await steamcmd.setup(_settings(), force_reinstall, force_junction)
 
 
 @mcp.tool
@@ -94,48 +53,6 @@ async def workshop_download(
 
 
 @mcp.tool
-async def clear_depot_cache() -> dict[str, Any]:
-    """
-    Delete SteamCMD's depotcache. First remediation for downloads that report success but
-    write nothing, or fail with disk/manifest errors.
-    Example: clear_depot_cache()
-    """
-    active = runtime.get()
-    async with active.mutation() as blocked:
-        if blocked is not None:
-            return blocked
-        return await asyncio.to_thread(steamcmd.clear_depot_cache, _settings())
-
-
-@mcp.tool
-async def acf_repair(dry_run: bool = True) -> dict[str, Any]:
-    """
-    Remove ACF entries for Workshop items no longer on disk. Stale entries make SteamCMD skip
-    re-downloads silently. dry_run lists orphans without writing; the write keeps a .backup.
-    Example: acf_repair(dry_run=False)
-    """
-    settings = _settings()
-    active = runtime.get()
-    async with active.mutation() as blocked:
-        if blocked is not None:
-            return blocked
-        return await asyncio.to_thread(
-            acf.repair, settings.acf_path, settings.workshop_content_dir, dry_run
-        )
-
-
-@mcp.tool
-async def db_sync(sources: list[str] | None = None, force: bool = False) -> dict[str, Any]:
-    """
-    Fetch the community databases (Steam Workshop DB, Community Rules, Use This Instead,
-    No Version Warning) from GitHub. Conditional on ETag, so a re-run is a cheap no-op.
-    These power the per-mod advisories in list_installed_mods / check_mod_updates.
-    Example: db_sync()
-    """
-    return await asyncio.to_thread(db.sync, _settings(), sources, force)
-
-
-@mcp.tool
 async def list_installed_mods(
     source: str | None = None,
     package_ids: list[str] | None = None,
@@ -148,6 +65,7 @@ async def list_installed_mods(
     Filter by source or package_ids to keep the payload small; duplicates are reported separately.
     Example: list_installed_mods(source="steamcmd", detail=true)
     """
+    await runtime.get().ensure_community_data()
     return await asyncio.to_thread(
         mods.inventory, _settings(), source, package_ids, detail, include_invalid
     )
@@ -160,6 +78,7 @@ async def workshop_mod_info(pfids: list[str | int], refresh: bool = False) -> di
     Cached per item for 6h; responses say what came from cache and when. refresh=true refetches.
     Example: workshop_mod_info(["2009463077"])
     """
+    await runtime.get().ensure_community_data()
     return await asyncio.to_thread(workshop.mod_info, _settings(), pfids, refresh)
 
 
@@ -173,6 +92,7 @@ async def check_mod_updates(
     Workshop data is cached 6h per item; refresh=true forces a live re-check of all of them.
     Example: check_mod_updates()
     """
+    await runtime.get().ensure_community_data()
     return await asyncio.to_thread(
         workshop.check_updates, _settings(), pfids, include_steam_client, refresh
     )
@@ -185,6 +105,7 @@ async def collection_expand(collection_url_or_id: str, refresh: bool = False) ->
     Membership is cached 24h; refresh=true refetches.
     Example: collection_expand("https://steamcommunity.com/sharedfiles/filedetails/?id=2896394545")
     """
+    await runtime.get().ensure_community_data()
     return await asyncio.to_thread(
         workshop.expand_collection, _settings(), collection_url_or_id, refresh
     )
@@ -247,15 +168,6 @@ async def workshop_delete(pfids: list[str | int]) -> dict[str, Any]:
 
 
 @mcp.tool
-async def cache_clear() -> dict[str, Any]:
-    """
-    Wipe the Steam Web API response cache (item details, collections, searches).
-    Example: cache_clear()
-    """
-    return await asyncio.to_thread(cache.Cache(_settings().cache_dir).clear)
-
-
-@mcp.tool
 async def sort_modlist(dry_run: bool = True) -> dict[str, Any]:
     """
     Compute a RimWorld load order for the active mods in ModsConfig.xml: Core/DLC/Harmony first,
@@ -264,6 +176,7 @@ async def sort_modlist(dry_run: bool = True) -> dict[str, Any]:
     On a dependency cycle nothing is written and the cycle's rules are returned with sources.
     Example: sort_modlist(dry_run=false)
     """
+    await runtime.get().ensure_community_data()
     return await asyncio.to_thread(modlist.sort_modlist, _settings(), dry_run)
 
 
@@ -274,6 +187,7 @@ async def diagnose_cycles() -> dict[str, Any]:
     (about:<mod>, community, user), plus incompatible active pairs and missing dependencies.
     Example: diagnose_cycles()
     """
+    await runtime.get().ensure_community_data()
     return await asyncio.to_thread(modlist.diagnose, _settings())
 
 

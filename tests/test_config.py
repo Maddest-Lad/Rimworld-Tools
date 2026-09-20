@@ -40,6 +40,13 @@ def test_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 def test_bad_int_falls_back_to_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RIMWORLD_TOOLS_MAX_DOWNLOAD_ITEMS", "not-a-number")
     assert Settings.from_env().max_download_items == 50
+    monkeypatch.setenv("RIMWORLD_TOOLS_MAX_DOWNLOAD_ITEMS", "0")
+    assert Settings.from_env().max_download_items == 50
+
+
+def test_settings_repr_redacts_the_api_key() -> None:
+    settings = Settings(Path("prefix"), None, Path("db"), 50, "secret")
+    assert "secret" not in repr(settings)
 
 
 def test_derived_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

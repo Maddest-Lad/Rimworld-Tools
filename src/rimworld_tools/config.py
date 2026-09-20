@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,10 +19,12 @@ RIMWORLD_APP_IDS: dict[str, int] = {
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Real environment wins over .env so a shell export or MCP client `env` block can override it.
-load_dotenv(REPO_ROOT / ".env", override=False)
-
 STEAMCMD_BATCH_SIZE = 25
+
+
+def load_environment() -> None:
+    """Load local settings during application startup, never while importing pure modules."""
+    load_dotenv(REPO_ROOT / ".env", override=False)
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -35,7 +37,8 @@ def _env_int(name: str, default: int) -> int:
     if not raw:
         return default
     try:
-        return int(raw)
+        value = int(raw)
+        return value if value > 0 else default
     except ValueError:
         return default
 
@@ -46,7 +49,7 @@ class Settings:
     mods_dir: Path | None
     db_dir: Path
     max_download_items: int
-    steam_web_api_key: str | None
+    steam_web_api_key: str | None = field(repr=False)
 
     @classmethod
     def from_env(cls) -> Settings:

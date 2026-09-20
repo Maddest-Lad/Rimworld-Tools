@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from . import db, locking, steamcmd
-from .config import Settings
+from .config import Settings, load_environment
 
 
 @dataclass
@@ -92,7 +92,10 @@ _runtime: Runtime | None = None
 def configure(settings: Settings | None = None) -> Runtime:
     """Create the process runtime explicitly at startup, or lazily for embedded use."""
     global _runtime
-    _runtime = Runtime(settings or Settings.from_env())
+    if settings is None:
+        load_environment()
+        settings = Settings.from_env()
+    _runtime = Runtime(settings)
     return _runtime
 
 

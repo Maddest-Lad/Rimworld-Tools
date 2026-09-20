@@ -5,7 +5,7 @@ import asyncio
 import json
 
 from . import acf, cache, db, steamcmd
-from .config import Settings
+from .config import Settings, load_environment
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -41,6 +41,7 @@ async def _run(args: argparse.Namespace, settings: Settings) -> dict:
 
 def main() -> None:
     args = _parser().parse_args()
+    load_environment()
     print(json.dumps(asyncio.run(_run(args, Settings.from_env())), indent=2))
 
 

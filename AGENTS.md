@@ -29,11 +29,10 @@ Register with an MCP client:
 
 ## Secrets — never read `.env`
 
-**Never open, read, cat, grep, print, or otherwise view `.env`** (or any `.env.*` file). It holds
-`STEAM_WEB_API_KEY`. This applies to every tool: Read, Bash, Grep, Glob output, subagents — all of
-them. If a task seems to need the key's value, it doesn't: the code reads it from the environment and
-never returns it. If `.env` shows up in a diff, `git status`, or an error message, do not inspect its
-contents. `.env-template` is the only env file that may be read or edited.
+**Never open, read, cat, grep, print, or otherwise view `.env`** (or any `.env.*` file).
+It may contain secrets retained from earlier versions. This applies to every tool and agent.
+Never inspect its contents in diffs or error messages. `.env-template` is the only env file that
+may be read or edited. No Steam API key is needed or consumed by this project.
 
 ## Configuration
 
@@ -42,56 +41,44 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 
 | Var | Default | Purpose |
 |---|---|---|
-| `RIMWORLD_TOOLS_STEAMCMD_PREFIX` | `<repo>/bin` | Holds `steamcmd/` and `steam/` (the SteamCMD `force_install_dir`) |
 | `RIMWORLD_TOOLS_MODS_DIR` | autodetected | Overrides RimWorld Mods folder discovery |
 | `RIMWORLD_TOOLS_DB_DIR` | `<repo>/bin/dbs` | Synced community databases |
-| `RIMWORLD_TOOLS_MAX_DOWNLOAD_ITEMS` | `50` | Legacy SteamCMD download limit; subscription calls have a fixed cap of 50 |
-| `STEAM_WEB_API_KEY` | unset | Enables key-gated tools; never returned in a tool result |
 
 ## Tools
 
 | Tool | Purpose |
 |---|---|
-| `environment_status()` | Game discovery, Steam process and native API DLL availability |
+| `environment_status()` | Game discovery and verified Steam client readiness |
 | `workshop_subscribe(pfids)` | Subscribe the signed-in Steam user; Steam downloads asynchronously |
 | `workshop_unsubscribe(pfids)` | Unsubscribe; Steam handles removal, local Mods copies remain untouched |
-| `list_installed_mods(source?, package_ids?, detail, include_invalid)` | Every mod on disk: packageId, name, source (ludeon\|steam\|steamcmd\|git\|local), pfid, version_ok. Compact by default; `detail` adds paths/deps/load rules |
-| `workshop_mod_info(pfids, refresh=False, include_description=False)` | Keyless Workshop metadata, optionally full Steam BBCode descriptions; 300/chunk |
-| `check_mod_updates(pfids?, include_steam_client=True)` | Local ACF timestamp vs Workshop; returns the outdated list |
+| `list_installed_mods(source?, package_ids?, detail, include_invalid)` | Every mod on disk: packageId, name, source (ludeon\|steam\|git\|local), pfid, version_ok. Compact by default; `detail` adds paths/deps/load rules |
+| `workshop_mod_info(pfids, refresh=False, include_description=False)` | Native Workshop metadata; optional descriptions with possible-truncation flag; 50/chunk |
+| `check_mod_updates(pfids?)` | Live subscription/install/download state; outdated lists installed items needing updates |
 | `collection_expand(url_or_id)` | Mod pfids inside a collection (nested collections filtered) |
-| `resolve_workshop_url(url)` | Pasted URL/id → `{pfid, kind: mod\|collection\|unpublished}` |
-| `workshop_search(query?, limit, game_version?, include_translations, include_scenarios, sort, days)` | Workshop search. Defaults: `Mod` + installed version tag (e.g. `1.6`), Translation/Scenario excluded. `sort`: relevance\|trend\|recent\|top\|updated. Needs `STEAM_WEB_API_KEY`, else returns an equivalent browse URL |
+| `resolve_workshop_url(url)` | Pasted URL/id → `{pfid, kind: mod\|collection\|other\|other_game\|unknown}` |
+| `workshop_search(query?, limit, game_version?, include_translations, include_scenarios, sort, days)` | Workshop search. Defaults: `Mod` + installed version tag (e.g. `1.6`), Translation/Scenario excluded. `sort`: relevance\|trend\|recent\|top\|updated. Requires the signed-in, online Steam client; no web fallback |
 | `sort_modlist(dry_run=True)` | 4-tier topological load order for ModsConfig.xml. A write snapshots first; a cycle writes nothing |
 | `diagnose_cycles()` | Cycles with per-edge rule sources, incompatible active pairs, missing/inactive dependencies |
 | `modlist_snapshot(note, list_only)` | Save or list snapshots of the active list (`bin/dbs/modlists/`) |
 | `modlist_diff(old="latest", new="current")` | Added/removed/moved between `current`, `latest`, or a snapshot id |
 
-Typical first session: `environment_status` → `workshop_subscribe([...])` → wait for Steam downloads.
-Subscription calls use the installed game's `steam_api64.dll` in a short-lived helper process.
-They require 64-bit Python and a signed-in Steam client. Never edit Steam's own ACF or delete
-its Workshop directories. Success confirms a subscription change, not download completion.
-The helper targets the installed DLL's UGC v016 / Utils v010 exports; missing exports fail clearly.
-Community data refreshes automatically; database/cache and legacy SteamCMD repair commands live
-in `python -m src.rimworld_tools.maintenance`. No setup or maintenance tools are exposed by MCP.
+Typical first session: `environment_status` -> `workshop_subscribe([...])` -> wait for Steam downloads.
+All Workshop operations use the installed game's `steam_api64.dll` in a short-lived helper.
+They require 64-bit Python and an online, signed-in Steam client. Never edit Steam's manifests or
+remove its Workshop directories. Success confirms subscription state, not download completion.
+The helper targets UGC v016 / Utils v010 / User v021; unsupported exports fail clearly.
 
-Steam's `QueryFiles` text search *ranks* rather than filters — a nonsense query still reports `total`
-in the tens of thousands. `workshop_search` adds a hint when no returned title contains a query word;
-`total` is never a match count. Tag filters (`requiredtags`/`excludedtags`) do genuinely filter.
+Steam Client API is the only Steam backend. No Web API, API-key setup, SteamCMD installation,
+junction creation or legacy repair path remains. `maintenance` retains status, database sync and
+cache clearing. HTTP requests remain only for community database downloads.
 
-Legacy SteamCMD ACF write guards only wait on `steamcmd.exe`. The Steam client rewrites *its own* ACF, never ours, and it
-is usually running — guarding on `steam.exe` would make every write tool permanently refuse.
+Search uses native enum values (relevance=11, updated=19), which differ from Web API values.
+Queries page at 50 items, search is capped at 100 results, and trend days must be 1-365.
+Search ranking/total is not an exact textual match count; preserve the nonmatch hint.
 
-Legacy layout under the prefix (`bin/` by default), retained for existing local copies:
-
-```
-bin/steamcmd/            SteamCMD itself; steamcmd.exe is tracked, the rest is gitignored
-bin/steam/               force_install_dir — gitignored, contains a junction into the real Mods dir
-  steamapps/workshop/appworkshop_294100.acf
-  steamapps/workshop/content/294100  -> <RimWorld>/Mods   (NTFS junction)
-```
-
-The legacy `workshop.delete` implementation purges BOTH ACF sections and the `depotcache/294100_<manifest>.manifest`
-file, or SteamCMD will silently refuse to re-download the item.
+Existing downloaded Mods folders are local copies, not proof of SteamCMD provenance. Keep their
+Workshop ids and respect `_steam` selection. Do not apply a Steam copy's update state to a local
+copy with the same id. No legacy runtime directories or user mod files are migrated automatically.
 
 ## Implementation notes
 
@@ -136,24 +123,26 @@ Synced into `bin/dbs/<name>/` from GitHub zips. Branches differ and are a 404 ha
 | Use This Instead (`replacements.json.gz`, a **list** keyed by `oldWorkshopId`) | "abandoned → maintained fork" |
 | No Version Warning (**versioned subdirs only**, `1.6/ModIdsToFix.xml`; no root file) | suppressing false `version_mismatch` |
 
-**Never trust the Steam DB's `unpublished` flag.** On a real 288-mod set it was wrong 4 times out
-of 4 — it lags republishing. `unpublished` advisories come only from a live Web API result
-(`workshop_mod_info`, `check_mod_updates`); `list_installed_mods` never emits one.
+**Never trust the Steam DB's `unpublished` flag.** It can lag republishing. Native lookup failure
+is also not proof of unpublishing: return the per-item failure reason. Local inventory never emits
+unpublished advisories. Successful native metadata can receive blacklist/replacement advisories.
 
 Advisories are `{kind, severity, message, action?}` with kinds `version_mismatch` (suppressed
 outright when No Version Warning lists the mod), `replaced`, `unpublished`, `blacklisted`,
 `missing_dependency` (named via the Steam DB with a ready `workshop_subscribe` action). A missing DB
 produces one top-level `notice` per response, never one per mod, and never an error.
 
-### Web API cache (`cache.py`)
+### Native query cache (`workshop_queries.py`, `cache.py`)
 
-Steam's Workshop rate limits are undocumented, so responses are cached on disk under
-`bin/dbs/cache/<namespace>.json`. `file_details` is cached **per pfid** (a 300-id call fetches only
-the stale subset); collections and searches per key. TTLs: item details 6h, unpublished items 1h,
-collections 24h, searches 1h. Failures are never cached. Every response that used the cache carries
-a `cache` block with an ISO timestamp and a readable phrase ("all 281 from cache, oldest fetched 2h
-14m ago (…)"), and every cached tool takes `refresh=true` to bypass. `db_sync` is separate — it
-uses GitHub ETags.
+Metadata/collection records have a 6h TTL; search records a 1h TTL. Namespaces include a schema
+version and the current Steam account. Description and children variants are separate. Account
+identity is verified even before cached reads; failures/private data must not cross account scope.
+Failures are never cached; a partial batch caches only successful items. `refresh=true` bypasses
+our cache and native queries disable Steam's optional cached response allowance. Results retain
+cache provenance. Subscription and installation state is always live. Database ETags are separate.
+
+Long descriptions use the SDK's fixed 8,000-byte buffer; flag possible truncation near its limit.
+Do not promise unlimited descriptions or fall back to scraping Workshop pages.
 
 ### Load-order sorting (`sorting.py`, `modlist.py`)
 
@@ -172,14 +161,3 @@ each cycle's edges with their sources.
 
 `ModsConfig.xml` entries may carry a `_steam` suffix (RimWorld's "use the Workshop copy" marker);
 it is preserved on write. Ids that resolve to no installed mod are kept at the end, never dropped.
-
-### SteamCMD constraints worth not rediscovering
-
-- **25 items max per invocation.** Beyond that SteamCMD's thread profiler overflows
-  (`vprof.cpp: No room for new profile`) and downloads hang. Undocumented by Valve.
-- **Its exit code is meaningless** — it returns 0 with per-item failures. Track a pending set and
-  scrape `Success. Downloaded item <id>` / `ERROR! Download item <id>`.
-- **On Windows its stdout doesn't stream through a pipe.** Tail `steamcmd/logs/console_log.txt` by
-  byte offset instead.
-- Downloads land at `<force_install_dir>/steamapps/workshop/content/294100/<pfid>/` with no flag to
-  redirect them; a junction at that path pointing to the Mods folder avoids all post-processing.

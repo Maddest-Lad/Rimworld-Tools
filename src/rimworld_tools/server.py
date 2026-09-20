@@ -68,8 +68,8 @@ async def workshop_mod_info(
     pfids: list[str | int], refresh: bool = False, include_description: bool = False
 ) -> dict[str, Any]:
     """
-    Title, update time, size, tags and unpublished flag for Workshop items. Keyless.
-    include_description=true adds the full Workshop description (Steam BBCode).
+    Title, update time, size and tags for Workshop items through the signed-in Steam client.
+    include_description=true adds Steam's description, flagging possible native buffer truncation.
     Cached per item for 6h; responses say what came from cache and when. refresh=true refetches.
     Example: workshop_mod_info(["2009463077"])
     """
@@ -91,8 +91,8 @@ async def check_mod_updates(pfids: list[str | int] | None = None) -> dict[str, A
 async def collection_expand(collection_url_or_id: str, refresh: bool = False) -> dict[str, Any]:
     """
     List the mods inside a Workshop collection (nested collections are filtered out).
-    Membership is cached 24h; refresh=true refetches.
-    Example: collection_expand("https://steamcommunity.com/sharedfiles/filedetails/?id=2896394545")
+    Membership and metadata are cached 6h per Steam account; refresh=true refetches.
+    Example: collection_expand("https://steamcommunity.com/sharedfiles/filedetails/?id=3521998684")
     """
     await runtime.get().ensure_community_data()
     return await workshop.expand_collection(_settings(), collection_url_or_id, refresh)
@@ -101,7 +101,8 @@ async def collection_expand(collection_url_or_id: str, refresh: bool = False) ->
 @mcp.tool
 async def resolve_workshop_url(url: str, refresh: bool = False) -> dict[str, Any]:
     """
-    Turn a pasted Workshop URL or id into {pfid, kind: mod|collection|unpublished}.
+    Resolve a Workshop URL or id to mod, collection, other, other_game, or unknown.
+    Unavailable items return a reason; a failed lookup does not prove an item is unpublished.
     Example: resolve_workshop_url("https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077")
     """
     return await workshop.resolve_url(_settings(), url, refresh)

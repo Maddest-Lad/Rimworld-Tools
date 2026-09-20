@@ -1,6 +1,29 @@
 # Steam Client API consolidation plan
 
-Status: planned; implementation has not started.
+Status: implemented. The sequence below records the implementation scope and acceptance checks.
+
+## Implementation results
+
+- `bc91c3f`: shared native sessions, ABI structures, query cleanup and helper transport.
+- `7511513`: native metadata, optional descriptions, collections and URL resolution.
+- `ffb87f8`: native search and pagination.
+- `c2790f3`: native subscription validation and installation state.
+- `210c4cc`: removed Web API/SteamCMD code, legacy settings and maintenance paths.
+- `486fc7c`: tightened helper result validation and partial-query regression coverage.
+- Documentation and model-facing contracts updated in the final migration commit.
+
+Read-only integration checks passed against the installed DLL: initialization, Harmony details
+and description, all five search modes with 51 results across pages, 281 subscriptions with live
+installation state, and collection 3521998684 yielding 779 mods plus four unavailable-item results.
+The native description buffer is 8,000 bytes; possible truncation is explicitly flagged.
+
+Final regression suite: 118 tests passed. Obsolete backend-specific tests were removed; native
+query/resource cleanup, account-scoped caching, partial failures and copy selection are covered.
+Ruff and Black checks pass. Real subscribe/unsubscribe mutations remain mocked in tests; no user
+subscriptions, mod files, manifests or secret files were changed during validation. SteamCMD's
+tracked executable was untracked while its existing local copy was preserved. All declared package
+dependencies still have active callers, so no dependency or lockfile update was necessary.
+
 
 ## Objective and decisions
 

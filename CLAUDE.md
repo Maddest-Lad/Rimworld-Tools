@@ -66,6 +66,10 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | `resolve_workshop_url(url)` | Pasted URL/id → `{pfid, kind: mod\|collection\|unpublished}` |
 | `workshop_search(query?, limit, game_version?, include_translations, include_scenarios, sort, days)` | Workshop search. Defaults: `Mod` + installed version tag (e.g. `1.6`), Translation/Scenario excluded. `sort`: relevance\|trend\|recent\|top\|updated. Needs `STEAM_WEB_API_KEY`, else returns an equivalent browse URL |
 | `workshop_delete(pfids)` | Remove dir + both ACF sections + depot manifest, so re-download really downloads |
+| `sort_modlist(dry_run=True)` | 4-tier topological load order for ModsConfig.xml. A write snapshots first; a cycle writes nothing |
+| `diagnose_cycles()` | Cycles with per-edge rule sources, incompatible active pairs, missing/inactive dependencies |
+| `modlist_snapshot(note, list_only)` | Save or list snapshots of the active list (`bin/dbs/modlists/`) |
+| `modlist_diff(old="latest", new="current")` | Added/removed/moved between `current`, `latest`, or a snapshot id |
 
 Typical first session: `rimworld_locate` → `steamcmd_setup` → `workshop_download([...])`.
 
@@ -139,6 +143,24 @@ Advisories are `{kind, severity, message, action?}` with kinds `version_mismatch
 outright when No Version Warning lists the mod), `replaced`, `unpublished`, `blacklisted`,
 `missing_dependency` (named via the Steam DB with a ready `workshop_download` action). A missing DB
 produces one top-level `notice` per response, never one per mod, and never an error.
+
+### Load-order sorting (`sorting.py`, `modlist.py`)
+
+`sorting.sort` is a pure function: partition active mods into four tiers, topologically sort each
+tier alone, concatenate. Tier 0 = Core/DLC/Harmony/Prepatcher (`TIER_ZERO`), tier 1 = known
+frameworks (`TIER_ONE`) + community `loadTop`, tier 3 = `loadBottom`, tier 2 = the rest. Tiers 0/1
+absorb their transitive *dependencies*; tier 3 absorbs its transitive *dependants*. Ties within a
+topological level break on lowercased display name. Verified against a real 288-mod RimSort-sorted
+list: identical except one same-level framework tie.
+
+Edges are `after -> before -> {sources}` with sources `about:<pid>`, `community`, `user`, unioned
+exactly as RimSort does (no override). Our extension: `userRules.json` accepts `removeLoadAfter` /
+`removeLoadBefore` per mod to drop an edge a lower layer added — that is how a reported cycle gets
+fixed. A cycle in any tier aborts the whole sort and nothing is written; `diagnose_cycles` returns
+each cycle's edges with their sources.
+
+`ModsConfig.xml` entries may carry a `_steam` suffix (RimWorld's "use the Workshop copy" marker);
+it is preserved on write. Ids that resolve to no installed mod are kept at the end, never dropped.
 
 ### SteamCMD constraints worth not rediscovering
 

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import acf, db, mods, paths, steamcmd, workshop
+from . import acf, db, modlist, mods, paths, steamcmd, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -204,6 +204,50 @@ async def workshop_delete(pfids: list[str | int]) -> dict[str, Any]:
     Example: workshop_delete(["2009463077"])
     """
     return await asyncio.to_thread(workshop.delete, Settings.from_env(), pfids)
+
+
+@mcp.tool
+async def sort_modlist(dry_run: bool = True) -> dict[str, Any]:
+    """
+    Compute a RimWorld load order for the active mods in ModsConfig.xml: Core/DLC/Harmony first,
+    known frameworks next, everything else topologically by About.xml + community + user rules,
+    loadBottom mods last. dry_run returns the order without writing; a write snapshots first.
+    On a dependency cycle nothing is written and the cycle's rules are returned with sources.
+    Example: sort_modlist(dry_run=false)
+    """
+    return await asyncio.to_thread(modlist.sort_modlist, Settings.from_env(), dry_run)
+
+
+@mcp.tool
+async def diagnose_cycles() -> dict[str, Any]:
+    """
+    Report load-order cycles among active mods, each edge tagged with the rule source that made it
+    (about:<mod>, community, user), plus incompatible active pairs and missing dependencies.
+    Example: diagnose_cycles()
+    """
+    return await asyncio.to_thread(modlist.diagnose, Settings.from_env())
+
+
+@mcp.tool
+async def modlist_snapshot(note: str = "", list_only: bool = False) -> dict[str, Any]:
+    """
+    Save the current ModsConfig.xml active list as a named snapshot, or list existing snapshots.
+    Example: modlist_snapshot("before adding VE mods")
+    """
+    settings = Settings.from_env()
+    if list_only:
+        return {"snapshots": await asyncio.to_thread(modlist.list_snapshots, settings)}
+    return await asyncio.to_thread(modlist.snapshot, settings, note)
+
+
+@mcp.tool
+async def modlist_diff(old: str = "latest", new: str = "current") -> dict[str, Any]:
+    """
+    Added/removed/moved mods between two lists. Refs: "current" (ModsConfig.xml), "latest"
+    (newest snapshot) or a snapshot id.
+    Example: modlist_diff("latest", "current")
+    """
+    return await asyncio.to_thread(modlist.diff, Settings.from_env(), old, new)
 
 
 def main() -> None:

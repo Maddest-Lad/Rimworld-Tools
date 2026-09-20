@@ -271,6 +271,10 @@ class Rule:
     load_top: bool = False
     load_bottom: bool = False
     comments: dict[str, str] = field(default_factory=dict)
+    # Our extension to the rules schema (userRules.json only in practice): drop an edge that a
+    # lower layer added. RimSort's union merge has no way to remove a rule, only add one.
+    remove_after: set[str] = field(default_factory=set)
+    remove_before: set[str] = field(default_factory=set)
 
 
 def _load_rules(path: Path) -> dict[str, Rule]:
@@ -290,6 +294,11 @@ def _load_rules(path: Path) -> dict[str, Rule]:
         for key, attr in (("loadTop", "load_top"), ("loadBottom", "load_bottom")):
             v = spec.get(key)
             setattr(r, attr, bool(v.get("value")) if isinstance(v, dict) else bool(v))
+        for key, target in (
+            ("removeLoadAfter", r.remove_after),
+            ("removeLoadBefore", r.remove_before),
+        ):
+            target.update(str(o).lower() for o in (spec.get(key) or {}))
         out[str(pid).lower()] = r
     return out
 

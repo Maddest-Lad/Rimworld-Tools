@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .locking import WindowsFileLock
+
 logger = logging.getLogger(__name__)
 
 HOUR = 3600
@@ -168,17 +170,32 @@ class Cache:
             return
         now = time.time()
         with self._state.lock:
-            store = self._load(namespace)
-            for k, v in items.items():
-                store[k] = {"at": now, "data": v}
-            self._save(namespace)
+            lock = WindowsFileLock(self.root / ".cache.lock")
+            if not lock.acquire():
+                logger.warning("cache write skipped because %s is locked", self.root)
+                return
+            try:
+                # Merge against disk while holding the process lock so another MCP process wins no data.
+                self._state.loaded.pop(namespace, None)
+                store = self._load(namespace)
+                for k, v in items.items():
+                    store[k] = {"at": now, "data": v}
+                self._save(namespace)
+            finally:
+                lock.release()
 
     def clear(self) -> dict[str, Any]:
         with self._state.lock:
-            stats = self.stats()
-            for f in self.root.glob("*.json"):
-                f.unlink()
-            self._state.loaded.clear()
+            lock = WindowsFileLock(self.root / ".cache.lock")
+            if not lock.acquire():
+                return {"error": "Cache is being updated by another MCP process."}
+            try:
+                stats = self.stats()
+                for f in self.root.glob("*.json"):
+                    f.unlink()
+                self._state.loaded.clear()
+            finally:
+                lock.release()
         return {"cleared_entries": stats["entries"], "freed_bytes": stats["bytes"]}
 
     def stats(self) -> dict[str, Any]:

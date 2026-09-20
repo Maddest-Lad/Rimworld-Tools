@@ -161,6 +161,15 @@ class TestCollectionAndSearchCache:
 
 
 class TestCacheStore:
+    def test_busy_disk_lock_does_not_overwrite_cache(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(cache.WindowsFileLock, "acquire", lambda *_: False)
+        current = cache.Cache(tmp_path)
+        current.store("file_details", {"1": {"a": 1}})
+        assert current.stats()["entries"] == 0
+        assert current.clear() == {"error": "Cache is being updated by another MCP process."}
+
     def test_instances_share_in_process_state(self, tmp_path: Path) -> None:
         first = cache.Cache(tmp_path)
         second = cache.Cache(tmp_path)

@@ -1,5 +1,8 @@
 # Architecture review and refactoring plan
 
+Historical review: the Steam Web API and SteamCMD backend direction below is superseded by
+[the Steam Client API consolidation plan](STEAM_CLIENT_MIGRATION.md).
+
 Review date: 2026-09-19. Status: proposal; implementation has not started.
 
 Scope: the current MCP server, tests, configuration, and project documentation. Windows 10 LTSC is the only required operating environment. Future skills, game-log tooling, and Steam account subscription management are design considerations, not implementation work in this refactor.

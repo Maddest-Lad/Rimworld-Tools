@@ -31,5 +31,15 @@ make fix     # auto-fix lint + format
 ```
 
 `environment_status()` provides a compact read-only view of discovery and SteamCMD readiness.
-The existing setup and repair tools remain available while the maintenance command surface is
-being introduced; normal download flows do not need to call them first.
+Normal MCP operations prepare SteamCMD and community advisory data as needed. Exceptional repair
+actions stay out of the MCP tool list and are available through:
+
+```sh
+uv run -m src.rimworld_tools.maintenance status
+uv run -m src.rimworld_tools.maintenance db-sync
+uv run -m src.rimworld_tools.maintenance acf-repair --write
+uv run -m src.rimworld_tools.maintenance depot-cache-clear
+```
+
+Sorting writes require current community load-order rules and refuse to edit `ModsConfig.xml`
+while RimWorld is running. Read-only analysis remains available when either condition is not met.

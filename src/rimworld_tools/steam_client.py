@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from .config import RIMWORLD_APP_ID
+from .steam_types import QueryCompleted, UGCDetails
 
 RESULT_PREFIX = "RIMWORLD_TOOLS_RESULT:"
 CALL_TIMEOUT = 30
@@ -30,6 +31,9 @@ class SteamClient:
         self.run_callbacks = self._bind("SteamAPI_RunCallbacks", None)
         self.get_ugc = self._bind("SteamAPI_SteamUGC_v016", ct.c_void_p)
         self.get_utils = self._bind("SteamAPI_SteamUtils_v010", ct.c_void_p)
+        self.get_user = self._bind("SteamAPI_SteamUser_v021", ct.c_void_p)
+        self.logged_on = self._bind("SteamAPI_ISteamUser_BLoggedOn", ct.c_bool, ct.c_void_p)
+        self.user_id = self._bind("SteamAPI_ISteamUser_GetSteamID", ct.c_uint64, ct.c_void_p)
         self.get_app_id = self._bind("SteamAPI_ISteamUtils_GetAppID", ct.c_uint32, ct.c_void_p)
         self.subscribe = self._bind(
             "SteamAPI_ISteamUGC_SubscribeItem", ct.c_uint64, ct.c_void_p, ct.c_uint64
@@ -57,6 +61,32 @@ class SteamClient:
             ct.c_int,
             ct.POINTER(ct.c_bool),
         )
+        self.create_details = self._ugc(
+            "CreateQueryUGCDetailsRequest", ct.c_uint64, ct.POINTER(ct.c_uint64), ct.c_uint32
+        )
+        self.send_query = self._ugc("SendQueryUGCRequest", ct.c_uint64, ct.c_uint64)
+        self.query_result = self._ugc(
+            "GetQueryUGCResult", ct.c_bool, ct.c_uint64, ct.c_uint32, ct.POINTER(UGCDetails)
+        )
+        self.release_query = self._ugc("ReleaseQueryUGCRequest", ct.c_bool, ct.c_uint64)
+        self.long_description = self._ugc(
+            "SetReturnLongDescription", ct.c_bool, ct.c_uint64, ct.c_bool
+        )
+        self.return_children = self._ugc("SetReturnChildren", ct.c_bool, ct.c_uint64, ct.c_bool)
+        self.query_children = self._ugc(
+            "GetQueryUGCChildren",
+            ct.c_bool,
+            ct.c_uint64,
+            ct.c_uint32,
+            ct.POINTER(ct.c_uint64),
+            ct.c_uint32,
+        )
+        self.cached_response = self._ugc(
+            "SetAllowCachedResponse", ct.c_bool, ct.c_uint64, ct.c_uint32
+        )
+
+    def _ugc(self, name, restype, *args):
+        return self._bind("SteamAPI_ISteamUGC_" + name, restype, ct.c_void_p, *args)
 
     def _bind(self, name, restype, *argtypes):
         function = getattr(self.dll, name)
@@ -72,8 +102,14 @@ class SteamClient:
         try:
             self.ugc = self.get_ugc()
             self.utils = self.get_utils()
+            self.user = self.get_user()
             if not self.ugc or not self.utils or self.get_app_id(self.utils) != RIMWORLD_APP_ID:
                 raise OSError("Steam did not provide the RimWorld Workshop interfaces.")
+            if not self.user or not self.logged_on(self.user):
+                raise OSError(
+                    "Steam is offline or signed out. Sign in and connect Steam to the internet."
+                )
+            self.account = str(self.user_id(self.user))
         except BaseException:
             self.shutdown()
             raise
@@ -81,6 +117,123 @@ class SteamClient:
 
     def __exit__(self, *_):
         self.shutdown()
+
+    def wait_result(self, handle, record_type, callback):
+        if not handle:
+            raise OSError("Steam rejected the API request.")
+        deadline = time.monotonic() + CALL_TIMEOUT
+        while time.monotonic() < deadline:
+            self.run_callbacks()
+            failed = ct.c_bool()
+            if self.completed(self.utils, handle, ct.byref(failed)):
+                record = record_type()
+                if (
+                    failed.value
+                    or not self.result(
+                        self.utils,
+                        handle,
+                        ct.byref(record),
+                        ct.sizeof(record),
+                        callback,
+                        ct.byref(failed),
+                    )
+                    or failed.value
+                ):
+                    raise OSError("Steam API call failed or returned an incompatible callback.")
+                return record
+            time.sleep(0.05)
+        raise OSError("Steam API call timed out.")
+
+    def read_query(self, handle: int, description: bool = False, children: bool = False) -> dict:
+        if handle in (0, 2**64 - 1):
+            raise OSError("Steam rejected the Workshop query.")
+        try:
+            for function, value in [
+                (self.long_description, description),
+                (self.return_children, children),
+                (self.cached_response, 0),
+            ]:
+                if not function(self.ugc, handle, value):
+                    raise OSError("Steam rejected a Workshop query option.")
+            done = self.wait_result(self.send_query(self.ugc, handle), QueryCompleted, 3401)
+            if done.result != 1 or done.handle != handle:
+                raise OSError(f"Workshop query failed (EResult {done.result}).")
+            items, failed = [], []
+            for index in range(done.count):
+                row = UGCDetails()
+                if not self.query_result(self.ugc, handle, index, ct.byref(row)):
+                    failed.append(
+                        {"index": index, "reason": "Steam could not read the query result."}
+                    )
+                    continue
+                pfid = str(row.pfid)
+                if row.result != 1:
+                    failed.append(
+                        {
+                            "pfid": pfid,
+                            "result": row.result,
+                            "reason": "Item unavailable to this account.",
+                        }
+                    )
+                    continue
+                item = {
+                    "pfid": pfid,
+                    "title": row.title.decode("utf-8", "replace"),
+                    "file_type": row.file_type,
+                    "consumer_app_id": row.consumer_app,
+                    "creator": str(row.owner),
+                    "time_created": row.created,
+                    "time_updated": row.updated,
+                    "file_size": row.file_size if row.file_size >= 0 else None,
+                    "tags": row.tags.decode("utf-8", "replace").split(",") if row.tags else [],
+                    "tags_truncated": bool(row.tags_truncated),
+                    "visibility": row.visibility,
+                    "url": f"https://steamcommunity.com/sharedfiles/filedetails/?id={pfid}",
+                    "unpublished": False,
+                }
+                if description:
+                    item["description"] = row.description.decode("utf-8", "replace")
+                    item["description_may_be_truncated"] = len(row.description) >= 7996
+                if children and row.file_type == 2:
+                    if row.num_children > 10000:
+                        failed.append(
+                            {"pfid": pfid, "reason": "Collection exceeds the 10000-item limit."}
+                        )
+                        continue
+                    ids = (ct.c_uint64 * row.num_children)()
+                    if row.num_children and not self.query_children(
+                        self.ugc, handle, index, ids, len(ids)
+                    ):
+                        failed.append(
+                            {"pfid": pfid, "reason": "Steam could not read collection members."}
+                        )
+                        continue
+                    item["children"] = [str(p) for p in ids]
+                items.append(item)
+            return {"items": items, "failed": failed, "total": done.total}
+        finally:
+            self.release_query(self.ugc, handle)
+
+    def details(self, pfids: list[str], description: bool = False, children: bool = False) -> dict:
+        items, failed = [], []
+        for start in range(0, len(pfids), 50):
+            chunk = pfids[start : start + 50]
+            ids = (ct.c_uint64 * len(chunk))(*(int(p) for p in chunk))
+            try:
+                result = self.read_query(
+                    self.create_details(self.ugc, ids, len(ids)), description, children
+                )
+                items.extend(result["items"])
+                reasons = {r.get("pfid"): r for r in result["failed"]}
+                returned = {r["pfid"] for r in result["items"]}
+                failed.extend(
+                    reasons.get(p, {"pfid": p, "reason": "No item returned by Steam."})
+                    for p in chunk
+                    if p not in returned
+                )
+            except OSError as exc:
+                failed.extend({"pfid": p, "reason": str(exc)} for p in chunk)
+        return {"items": items, "failed": failed}
 
     def change(self, pfids: list[str], subscribe: bool) -> dict:
         succeeded = []
@@ -146,15 +299,27 @@ class SteamClient:
 def main() -> None:
     """Run native code in a short-lived process so its output cannot corrupt MCP stdio."""
     dll, action, *pfids = sys.argv[1:]
-    if action not in {"subscribe", "unsubscribe", "probe"}:
+    request = (
+        json.loads(sys.stdin.read()) if action == "request" else {"action": action, "pfids": pfids}
+    )
+    action = request["action"]
+    if action not in {"subscribe", "unsubscribe", "probe", "details"}:
         raise ValueError("Unknown Steam action")
     try:
         with SteamClient(Path(dll)) as client:
-            result = (
-                {"ready": True}
-                if action == "probe"
-                else client.change(pfids, action == "subscribe")
-            )
+            if request.get("account", client.account) != client.account:
+                raise OSError("The Steam account changed during the operation; retry.")
+            if action == "probe":
+                result = {"ready": True}
+            elif action == "details":
+                result = client.details(
+                    request["pfids"],
+                    request.get("description", False),
+                    request.get("children", False),
+                )
+            else:
+                result = client.change(request["pfids"], action == "subscribe")
+            result["account"] = client.account
     except (OSError, AttributeError) as exc:
         result = {
             "error": str(exc),

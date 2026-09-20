@@ -9,7 +9,7 @@ dist/
 build/
 *.egg-info/
 
-# Secrets — holds STEAM_WEB_API_KEY. Only .env-template is tracked.
+# Local settings may contain secrets. Only .env-template is tracked.
 .env
 .env.*
 !.env-template

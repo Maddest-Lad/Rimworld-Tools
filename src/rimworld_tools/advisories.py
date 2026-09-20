@@ -85,7 +85,7 @@ class Context:
         )
 
     def replacement(self, pfid: str | None, unpublished: bool | None) -> Advisory | None:
-        """`unpublished` must come from a live Web API result, never the community Steam DB —
+        """`unpublished` must come from a live Workshop result, never the community Steam DB —
         that DB's flag was 4-for-4 wrong on a real mod set (it lags republishing by months)."""
         if not pfid:
             return None

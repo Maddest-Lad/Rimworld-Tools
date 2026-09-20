@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import shutil
+import threading
 import time
 import xml.etree.ElementTree as ET
 import zipfile
@@ -177,15 +178,21 @@ def status(settings: Settings) -> dict[str, Any]:
 
 # --- readers (in-process cache keyed on file mtime) --------------------------------------
 
-_cache: dict[tuple[str, float], Any] = {}
+_cache_lock = threading.RLock()
+_cache: dict[tuple[str, int, int], Any] = {}
+_MAX_READER_CACHE_ENTRIES = 32
 
 
 def _cached(path: Path, loader: Any) -> Any:
-    key = (str(path), path.stat().st_mtime)
-    if key not in _cache:
-        _cache.clear()  # only ever a handful of files; keep memory bounded
-        _cache[key] = loader(path)
-    return _cache[key]
+    stat = path.stat()
+    key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    with _cache_lock:
+        if key not in _cache:
+            _cache[key] = loader(path)
+            if len(_cache) > _MAX_READER_CACHE_ENTRIES:
+                # Keep the cache bounded without evicting unrelated current readers on every load.
+                del _cache[next(iter(_cache))]
+        return _cache[key]
 
 
 def _as_list(v: Any) -> list[str]:
@@ -358,16 +365,14 @@ def _load_no_version_warning(path: Path) -> set[str]:
 
 
 def no_version_warning(settings: Settings, game_mm: str | None) -> set[str] | None:
-    """Version-scoped file wins (`<root>/<1.6>/ModIdsToFix.xml`), then the root one."""
+    """Load only the warning list for the installed major.minor game version."""
     root = _dir(settings, "no_version_warning")
-    if not root.is_dir():
+    if not game_mm or not root.is_dir():
         return None
     candidates = sorted(p for p in root.rglob("*") if p.name.lower() == "modidstofix.xml")
-    if not candidates:
+    chosen = next((p for p in candidates if p.parent.name == game_mm), None)
+    if chosen is None:
         return None
-    versioned = [p for p in candidates if game_mm and p.parent.name == game_mm]
-    top_level = [p for p in candidates if p.parent == root]
-    chosen = (versioned or top_level or candidates)[0]
     return _cached(chosen, _load_no_version_warning)
 
 

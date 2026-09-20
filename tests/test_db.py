@@ -140,7 +140,7 @@ class TestReaders:
         assert uti["555"].new_package_id == "forker.gone"
         assert uti["555"].new_versions == ["1.5", "1.6"]
 
-    def test_no_version_warning_prefers_versioned_dir(self, tmp_path: Path) -> None:
+    def test_no_version_warning_uses_only_the_matching_version_dir(self, tmp_path: Path) -> None:
         s = _settings(tmp_path)
         put(s, "no_version_warning", "ModIdsToFix.xml", NOVW)
         put(
@@ -158,8 +158,32 @@ class TestReaders:
             sub="1.5",
         )
         assert db.no_version_warning(s, "1.6") == {"only.six"}
-        assert db.no_version_warning(s, "1.4") == {"author.oldbutfine", "x.y"}  # root fallback
-        assert db.no_version_warning(s, None) == {"author.oldbutfine", "x.y"}
+        assert db.no_version_warning(s, "1.4") is None
+        assert db.no_version_warning(s, None) is None
+
+    def test_reader_cache_keeps_other_loaded_databases(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        s = _settings(tmp_path)
+        steam_path = put(s, "steam_db", "steamDB.json", json.dumps(STEAM_DB))
+        rules_path = put(s, "community_rules", "communityRules.json", json.dumps(RULES))
+        steam_loads = 0
+        rules_loads = 0
+
+        def load_steam(path: Path):
+            nonlocal steam_loads
+            steam_loads += 1
+            return path.name
+
+        def load_rules(path: Path):
+            nonlocal rules_loads
+            rules_loads += 1
+            return path.name
+
+        assert db._cached(steam_path, load_steam) == "steamDB.json"
+        assert db._cached(rules_path, load_rules) == "communityRules.json"
+        assert db._cached(steam_path, load_steam) == "steamDB.json"
+        assert steam_loads == 1 and rules_loads == 1
 
     def test_missing_dbs_are_none(self, tmp_path: Path) -> None:
         s = _settings(tmp_path)
@@ -242,7 +266,7 @@ class TestAdvisories:
         s = _settings(tmp_path)
         put(s, "steam_db", "steamDB.json", json.dumps(STEAM_DB))
         put(s, "use_this_instead", "replacements.json", json.dumps(UTI))
-        put(s, "no_version_warning", "ModIdsToFix.xml", NOVW)
+        put(s, "no_version_warning", "ModIdsToFix.xml", NOVW, sub="1.6")
         return advisories.Context.load(s, "1.6")
 
     def test_version_mismatch_suppressed_by_novw(self, ctx: advisories.Context) -> None:

@@ -145,6 +145,15 @@ class TestSortModlist:
         out = modlist.sort_modlist(world, dry_run=False)
         assert "unavailable" in out["error"]
 
+    def test_write_refuses_while_rimworld_is_running(
+        self, world: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.rimworld_tools import acf
+
+        monkeypatch.setattr(acf, "steam_processes_running", lambda _: ["rimworldwin64.exe"])
+        out = modlist.sort_modlist(world, dry_run=False)
+        assert "while rimworldwin64.exe is running" in out["error"]
+
     def test_dry_run_orders_without_writing(self, world: Settings) -> None:
         before = modlist.config_path(world).read_text(encoding="utf-8")  # type: ignore[union-attr]
         out = modlist.sort_modlist(world, dry_run=True)

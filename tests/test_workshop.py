@@ -93,6 +93,23 @@ class TestCheckUpdates:
         assert out["items"][0]["outdated"] is None
         assert out["lookup_failed"] == ["1"]
 
+    def test_missing_local_timestamp_is_unknown(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        s = _settings(tmp_path)
+        s.acf_path.parent.mkdir(parents=True)
+        acf.save(s.acf_path, _acf_with("1", 100, "m1"))
+        data = acf.load(s.acf_path)
+        acf.root(data)["WorkshopItemsInstalled"]["1"].pop("timeupdated")
+        acf.save(s.acf_path, data)
+        monkeypatch.setattr(
+            webapi,
+            "file_details",
+            _remote({"1": {"title": "Unknown", "time_updated": 200, "unpublished": False}}),
+        )
+        out = workshop.check_updates(s, None, include_steam_client=False)
+        assert out["items"][0]["outdated"] is None
+
     def test_nothing_installed(self, tmp_path: Path) -> None:
         out = workshop.check_updates(_settings(tmp_path), None, include_steam_client=False)
         assert out["items"] == [] and "hint" in out

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from . import advisories, db, mods, paths, sorting
+from . import acf, advisories, db, mods, paths, sorting
 from .config import Settings
 
 _STEAM_SUFFIX = "_steam"
@@ -307,6 +307,11 @@ def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
         return {
             "error": "Community load-order rules are unavailable, so the active list was not changed.",
             "hint": "Reconnect and retry, or run the maintenance command `db-sync` first.",
+        }
+    if not dry_run and (running := acf.steam_processes_running(acf.RIMWORLD_PROCESSES)):
+        return {
+            "error": f"Refusing to edit ModsConfig.xml while {', '.join(running)} is running.",
+            "hint": "Close RimWorld, then run sort_modlist again.",
         }
     result = sorting.sort(list(prep.resolved), prep.compiled, prep.names)
     out: dict[str, Any] = {

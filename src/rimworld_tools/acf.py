@@ -16,6 +16,7 @@ _INSTALLED = "WorkshopItemsInstalled"
 _DETAILS = "WorkshopItemDetails"
 STEAMCMD_PROCESSES = frozenset({"steamcmd.exe"})
 STEAM_CLIENT_PROCESSES = frozenset({"steam.exe"})
+RIMWORLD_PROCESSES = frozenset({"rimworldwin64.exe", "rimworldwin.exe"})
 
 
 @dataclass(frozen=True)

@@ -98,7 +98,7 @@ def check_updates(
                     "title": r["title"],
                     "remote_time_updated": rt,
                     "unpublished": r["unpublished"],
-                    "outdated": bool(rt and lt and rt > lt),
+                    "outdated": rt > lt if rt is not None and lt is not None else None,
                 }
             )
             if found := _remote_advisories(ctx, pfid, r["unpublished"]):

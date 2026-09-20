@@ -1,31 +1,28 @@
-.PHONY: help install submodules fix lint format check test start config
+.PHONY: help install bootstrap test check fix start config
+
+MCP := rimworld-mcp
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-12s %s\n", $$1, $$2}'
 
-install:  ## Sync dependencies
-	uv sync
+install:  ## Install the MCP server's dependencies (uv sync)
+	$(MAKE) -C $(MCP) install
 
-submodules:  ## Init/update the RimSort reference submodule
-	git submodule update --init --recursive
+bootstrap: install  ## Link RimWorld folders into links/ and write .mcp.json
+	uv run --project $(MCP) python bootstrap.py $(ARGS)
 
-fix: install  ## Auto-format and auto-fix lint
-	uv run black .
-	uv run ruff check --fix . --unsafe-fixes
+test:  ## Run the MCP server tests and the log-parser tests
+	$(MAKE) -C $(MCP) test
+	uv run --project $(MCP) pytest .claude/skills/rimworld-log-debug/scripts/tests
 
-lint:  ## Check lint
-	uv run ruff check .
+check:  ## Lint + format checks
+	$(MAKE) -C $(MCP) check
 
-format:  ## Check formatting
-	uv run black --check .
+fix:  ## Auto-format and auto-fix lint
+	$(MAKE) -C $(MCP) fix
 
-check: lint format  ## Lint + format checks
+start:  ## Run the MCP server over stdio
+	$(MAKE) -C $(MCP) start
 
-test:  ## Run the test suite
-	uv run pytest
-
-start:  ## Run the MCP server (stdio)
-	uv run -m src.rimworld_tools.server
-
-config:  ## Print mcp.json, Claude Code, and Codex MCP configuration snippets
-	@powershell -NoProfile -Command "$$cwd = (Get-Location).Path.Replace('\', '/'); Write-Output 'mcp.json:'; Write-Output '{'; Write-Output '  \"mcpServers\": {'; Write-Output '    \"rimworld-tools\": {'; Write-Output '      \"command\": \"uv\",'; Write-Output '      \"args\": [\"run\", \"-m\", \"src.rimworld_tools.server\"],'; Write-Output ('      \"cwd\": \"' + $$cwd + '\"'); Write-Output '    }'; Write-Output '  }'; Write-Output '}'; Write-Output ''; Write-Output 'Claude Code (project scope):'; Write-Output ('claude mcp add rimworld-tools --scope project -- uv --directory \"' + $$cwd + '\" run -m src.rimworld_tools.server'); Write-Output ''; Write-Output 'Codex (.codex/config.toml or ~/.codex/config.toml):'; Write-Output '[mcp_servers.rimworld-tools]'; Write-Output 'command = \"uv\"'; Write-Output 'args = [\"run\", \"-m\", \"src.rimworld_tools.server\"]'; Write-Output ('cwd = \"' + $$cwd + '\"')"
+config:  ## Print MCP registration snippets
+	$(MAKE) -C $(MCP) config

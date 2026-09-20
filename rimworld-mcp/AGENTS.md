@@ -1,6 +1,7 @@
-# Rimworld-Tools
+# rimworld-mcp
 
-A RimWorld MCP server for Windows 10 LTSC. Steam Client API owns Workshop queries and
+The RimWorld MCP server for Windows 10 LTSC, a subproject of the Rimworld-Tools workspace
+(the parent directory holds the workspace `CLAUDE.md`, skills, `links/` and `.mcp.json`). Steam Client API owns Workshop queries and
 subscriptions; local modules handle inventory, advisories, modlists and sorting.
 
 ## Running
@@ -32,7 +33,7 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | Var | Default | Purpose |
 |---|---|---|
 | `RIMWORLD_TOOLS_MODS_DIR` | autodetected | Overrides RimWorld Mods folder discovery |
-| `RIMWORLD_TOOLS_DB_DIR` | `<repo>/bin/dbs` | Synced community databases |
+| `RIMWORLD_TOOLS_DB_DIR` | `<rimworld-mcp>/bin/dbs` | Synced community databases |
 
 ## Tools
 
@@ -91,9 +92,8 @@ copy with the same id. No legacy runtime directories or user mod files are migra
 
 ### Working rules
 
-- **`modules/RimSort` is GPL-3.0 and read-only reference.** Never import, vendor, or copy from it.
-  Knowledge was extracted clean-room into `docs/research/` (gitignored, local-only); consult those
-  docs rather than re-reading RimSort source. Exact literals (command flags, API URLs, registry
+- **RimSort (GPL-3.0) is reference only.** Never import, vendor, or copy from it. Knowledge was
+  extracted clean-room into `docs/research/` (gitignored, local-only); consult those docs. Exact literals (command flags, API URLs, registry
   keys, log-line patterns, packageIds) are facts and are fine to use.
 - `server.py` stays thin: `@mcp.tool` declarations and `main()` only. Real logic lives in siblings,
   one concern per file.

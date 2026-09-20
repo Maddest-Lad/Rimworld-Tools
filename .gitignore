@@ -19,16 +19,13 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+.claude/settings.local.json
 
-# Legacy SteamCMD installations remain local and are never staged.
-bin/steamcmd/
+# MCP server local state: synced community databases, caches, snapshots, legacy SteamCMD dirs.
+rimworld-mcp/bin/
 
-# SteamCMD force_install_dir: holds the ACF and a junction INTO the real Mods folder.
-# Git on Windows recurses through junctions, so this must never be staged.
-bin/steam/
+# Clean-room research notes (local only)
+rimworld-mcp/docs/
 
-# Synced community databases
-bin/dbs/
-
-# Local
-docs/
+# Junctions into the RimWorld/Steam folders, created by bootstrap.py
+links/

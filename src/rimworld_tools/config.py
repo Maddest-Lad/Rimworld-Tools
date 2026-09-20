@@ -60,6 +60,10 @@ class Settings:
         )
 
     @property
+    def cache_dir(self) -> Path:
+        return self.db_dir / "cache"
+
+    @property
     def steamcmd_dir(self) -> Path:
         return self.steamcmd_prefix / "steamcmd"
 

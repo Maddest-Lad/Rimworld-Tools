@@ -96,12 +96,12 @@ class TestCollection:
             ]
         )
         monkeypatch.setattr(webapi, "_post_with_retry", fake)
-        assert webapi.collection_children("5") == ["10", "12"]
+        assert webapi.collection_children("5") == (["10", "12"], None)
 
     def test_non_collection_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         fake = FakePoster([{"response": {"collectiondetails": [{"result": 9}]}}])
         monkeypatch.setattr(webapi, "_post_with_retry", fake)
-        assert webapi.collection_children("5") is None
+        assert webapi.collection_children("5") == (None, None)
 
 
 class TestUrlParsing:

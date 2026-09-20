@@ -32,7 +32,7 @@ def _acf_with(pfid: str, timeupdated: int, manifest: str) -> dict:
 
 
 def _remote(items: dict[str, dict[str, Any]], failed: list[str] | None = None):
-    def fake(pfids: list[str], key: str | None = None) -> webapi.ChunkedResult:
+    def fake(pfids: list[str], key: str | None = None, *_: object) -> webapi.ChunkedResult:
         return webapi.ChunkedResult(
             items={p: items[p] for p in pfids if p in items}, failed_ids=failed or []
         )
@@ -165,7 +165,7 @@ class TestSearch:
         s = Settings(**{**_settings(tmp_path).__dict__, "steam_web_api_key": "k"})
         seen: dict[str, Any] = {}
 
-        def fake(q, k, n, required, excluded, sort, days):
+        def fake(q, k, n, required, excluded, sort, days, *_):
             seen.update(required=required, excluded=excluded, sort=sort, days=days)
             return {"query": q, "total": 1, "results": [{"title": q}]}
 

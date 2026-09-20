@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import acf, db, modlist, mods, paths, steamcmd, workshop
+from . import acf, cache, db, modlist, mods, paths, steamcmd, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -123,47 +123,49 @@ async def list_installed_mods(
 
 
 @mcp.tool
-async def workshop_mod_info(pfids: list[str | int]) -> dict[str, Any]:
+async def workshop_mod_info(pfids: list[str | int], refresh: bool = False) -> dict[str, Any]:
     """
     Title, update time, size, tags and unpublished flag for Workshop items. Keyless.
-    Chunked at 300; a failed chunk never discards the rest.
+    Cached per item for 6h; responses say what came from cache and when. refresh=true refetches.
     Example: workshop_mod_info(["2009463077"])
     """
-    return await asyncio.to_thread(workshop.mod_info, Settings.from_env(), pfids)
+    return await asyncio.to_thread(workshop.mod_info, Settings.from_env(), pfids, refresh)
 
 
 @mcp.tool
 async def check_mod_updates(
-    pfids: list[str | int] | None = None, include_steam_client: bool = True
+    pfids: list[str | int] | None = None, include_steam_client: bool = True, refresh: bool = False
 ) -> dict[str, Any]:
     """
     Compare each installed item's ACF timestamp with the Workshop's. Defaults to everything
     installed via SteamCMD and (optionally) the Steam client. Returns the outdated pfid list.
+    Workshop data is cached 6h per item; refresh=true forces a live re-check of all of them.
     Example: check_mod_updates()
     """
     return await asyncio.to_thread(
-        workshop.check_updates, Settings.from_env(), pfids, include_steam_client
+        workshop.check_updates, Settings.from_env(), pfids, include_steam_client, refresh
     )
 
 
 @mcp.tool
-async def collection_expand(collection_url_or_id: str) -> dict[str, Any]:
+async def collection_expand(collection_url_or_id: str, refresh: bool = False) -> dict[str, Any]:
     """
     List the mods inside a Workshop collection (nested collections are filtered out).
+    Membership is cached 24h; refresh=true refetches.
     Example: collection_expand("https://steamcommunity.com/sharedfiles/filedetails/?id=2896394545")
     """
     return await asyncio.to_thread(
-        workshop.expand_collection, Settings.from_env(), collection_url_or_id
+        workshop.expand_collection, Settings.from_env(), collection_url_or_id, refresh
     )
 
 
 @mcp.tool
-async def resolve_workshop_url(url: str) -> dict[str, Any]:
+async def resolve_workshop_url(url: str, refresh: bool = False) -> dict[str, Any]:
     """
     Turn a pasted Workshop URL or id into {pfid, kind: mod|collection|unpublished}.
     Example: resolve_workshop_url("https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077")
     """
-    return await asyncio.to_thread(workshop.resolve_url, Settings.from_env(), url)
+    return await asyncio.to_thread(workshop.resolve_url, Settings.from_env(), url, refresh)
 
 
 @mcp.tool
@@ -175,10 +177,12 @@ async def workshop_search(
     include_scenarios: bool = False,
     sort: str = "relevance",
     days: int = 90,
+    refresh: bool = False,
 ) -> dict[str, Any]:
     """
     Search the RimWorld Workshop. Defaults filter to Mod items tagged with the installed game
     version (e.g. 1.6) and exclude Translation/Scenario items; pass game_version="any" to lift it.
+    Results are cached 1h per distinct query+filters; refresh=true refetches.
     sort: relevance (needs query) | trend (uses days) | recent | top | updated.
     Example: workshop_search("vanilla expanded framework")
     Example: workshop_search(sort="trend", days=30, limit=10)
@@ -193,6 +197,7 @@ async def workshop_search(
         include_scenarios,
         sort,
         days,
+        refresh,
     )
 
 
@@ -204,6 +209,15 @@ async def workshop_delete(pfids: list[str | int]) -> dict[str, Any]:
     Example: workshop_delete(["2009463077"])
     """
     return await asyncio.to_thread(workshop.delete, Settings.from_env(), pfids)
+
+
+@mcp.tool
+async def cache_clear() -> dict[str, Any]:
+    """
+    Wipe the Steam Web API response cache (item details, collections, searches).
+    Example: cache_clear()
+    """
+    return await asyncio.to_thread(cache.Cache(Settings.from_env().cache_dir).clear)
 
 
 @mcp.tool

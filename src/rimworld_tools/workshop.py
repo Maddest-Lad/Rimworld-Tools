@@ -7,6 +7,7 @@ from typing import Any
 import requests
 
 from . import acf, advisories, paths, steamcmd, symlink, webapi
+from . import cache as cache_mod
 from .config import RIMWORLD_APP_ID, Settings
 
 logger = logging.getLogger(__name__)
@@ -32,17 +33,23 @@ def installed_items(settings: Settings, include_steam_client: bool) -> dict[str,
     return out
 
 
-def mod_info(settings: Settings, pfids: list[str | int]) -> dict[str, Any]:
+def _cache(settings: Settings) -> cache_mod.Cache:
+    return cache_mod.Cache(settings.cache_dir)
+
+
+def mod_info(settings: Settings, pfids: list[str | int], refresh: bool = False) -> dict[str, Any]:
     good, bad = steamcmd._normalise_pfids(pfids)
     if not good:
         return {"error": "No valid published file ids given.", "hint": "Pass numeric pfids."}
-    res = webapi.file_details(good, settings.steam_web_api_key)
+    res = webapi.file_details(good, settings.steam_web_api_key, _cache(settings), refresh)
     ctx = advisories.Context.load(settings, detected_game_version(settings))
     items = []
     for item in res.items.values():
         found = _remote_advisories(ctx, item["pfid"], item["unpublished"])
         items.append({**item, "advisories": found} if found else item)
     out: dict[str, Any] = {"items": items, "failed": res.failed_ids + bad, "errors": res.errors}
+    if summary := res.cache_summary():
+        out["cache"] = summary
     if notice := ctx.db_notice():
         out["notice"] = notice
     return out
@@ -56,7 +63,10 @@ def _remote_advisories(
 
 
 def check_updates(
-    settings: Settings, pfids: list[str | int] | None, include_steam_client: bool
+    settings: Settings,
+    pfids: list[str | int] | None,
+    include_steam_client: bool,
+    refresh: bool = False,
 ) -> dict[str, Any]:
     local = installed_items(settings, include_steam_client)
     if pfids:
@@ -72,7 +82,7 @@ def check_updates(
             "not_installed": missing,
             "hint": "No installed Workshop items recorded. Run workshop_download or steamcmd_setup.",
         }
-    remote = webapi.file_details(list(local), settings.steam_web_api_key)
+    remote = webapi.file_details(list(local), settings.steam_web_api_key, _cache(settings), refresh)
     ctx = advisories.Context.load(settings, detected_game_version(settings))
     items: list[dict[str, Any]] = []
     for pfid, rec in local.items():
@@ -102,6 +112,8 @@ def check_updates(
         "lookup_failed": remote.failed_ids,
         "errors": remote.errors,
     }
+    if summary := remote.cache_summary():
+        out["cache"] = summary
     steamcmd_outdated = [
         i["pfid"] for i in items if i.get("outdated") and i["source"] == "steamcmd"
     ]
@@ -112,21 +124,24 @@ def check_updates(
     return out
 
 
-def expand_collection(settings: Settings, url_or_id: str) -> dict[str, Any]:
+def expand_collection(settings: Settings, url_or_id: str, refresh: bool = False) -> dict[str, Any]:
     pfid = webapi.parse_workshop_url(url_or_id)
     if not pfid:
         return {
             "error": f"Could not find an id in {url_or_id!r}.",
             "hint": "Pass a Workshop URL or numeric id.",
         }
+    c = _cache(settings)
     try:
-        children = webapi.collection_children(pfid, settings.steam_web_api_key)
+        children, cached_at = webapi.collection_children(
+            pfid, settings.steam_web_api_key, c, refresh
+        )
     except (requests.RequestException, ValueError) as exc:
         return {"error": webapi.redact(str(exc), settings.steam_web_api_key)}
     if children is None:
         return {"error": f"{pfid} is not a collection (or is private).", "collection": pfid}
-    details = webapi.file_details(children, settings.steam_web_api_key)
-    return {
+    details = webapi.file_details(children, settings.steam_web_api_key, c, refresh)
+    out: dict[str, Any] = {
         "collection": pfid,
         "count": len(children),
         "pfids": children,
@@ -134,26 +149,51 @@ def expand_collection(settings: Settings, url_or_id: str) -> dict[str, Any]:
         "lookup_failed": details.failed_ids,
         "hint": f"Download all with workshop_download(pfids=<pfids>) in batches ≤ {settings.max_download_items}.",
     }
+    if cached_at is not None:
+        out["cache"] = {
+            "collection_cached_at": cache_mod.iso(cached_at),
+            "note": "membership "
+            + cache_mod.describe(cached_at)
+            + ". Pass refresh=true to refetch.",
+        }
+        if summary := details.cache_summary():
+            out["cache"]["titles"] = summary
+    elif summary := details.cache_summary():
+        out["cache"] = {"titles": summary}
+    return out
 
 
-def resolve_url(settings: Settings, url: str) -> dict[str, Any]:
+def resolve_url(settings: Settings, url: str, refresh: bool = False) -> dict[str, Any]:
     pfid = webapi.parse_workshop_url(url)
     if not pfid:
         return {"error": f"No Workshop id found in {url!r}."}
+    c = _cache(settings)
     try:
-        children = webapi.collection_children(pfid, settings.steam_web_api_key)
+        children, cached_at = webapi.collection_children(
+            pfid, settings.steam_web_api_key, c, refresh
+        )
     except (requests.RequestException, ValueError):
-        children = None
+        children, cached_at = None, None
     if children is not None:
-        return {"pfid": pfid, "kind": "collection", "child_count": len(children)}
-    details = webapi.file_details([pfid], settings.steam_web_api_key)
+        out: dict[str, Any] = {"pfid": pfid, "kind": "collection", "child_count": len(children)}
+        if cached_at is not None:
+            out["cache"] = {
+                "cached_at": cache_mod.iso(cached_at),
+                "note": cache_mod.describe(cached_at),
+            }
+        return out
+    details = webapi.file_details([pfid], settings.steam_web_api_key, c, refresh)
     item = details.items.get(pfid)
     if item is None:
         return {"pfid": pfid, "kind": "unknown", "hint": "Lookup failed; try again."}
     if item["unpublished"]:
         private = webapi.is_private_or_deleted(pfid)
-        return {"pfid": pfid, "kind": "unpublished", "confirmed_private_or_deleted": private}
-    return {"pfid": pfid, "kind": "mod", "title": item["title"]}
+        out = {"pfid": pfid, "kind": "unpublished", "confirmed_private_or_deleted": private}
+    else:
+        out = {"pfid": pfid, "kind": "mod", "title": item["title"]}
+    if summary := details.cache_summary():
+        out["cache"] = summary
+    return out
 
 
 _FALLBACK_GAME_VERSION = "1.6"
@@ -178,6 +218,7 @@ def search(
     include_scenarios: bool,
     sort: str,
     days: int,
+    refresh: bool = False,
 ) -> dict[str, Any]:
     if sort not in webapi.SORT_MODES:
         return {"error": f"Unknown sort {sort!r}.", "hint": f"One of {sorted(webapi.SORT_MODES)}."}
@@ -203,7 +244,15 @@ def search(
         }
     try:
         out = webapi.search(
-            query, settings.steam_web_api_key, limit, required, excluded, sort, days
+            query,
+            settings.steam_web_api_key,
+            limit,
+            required,
+            excluded,
+            sort,
+            days,
+            _cache(settings),
+            refresh,
         )
     except (requests.RequestException, ValueError) as exc:
         return {"error": webapi.redact(str(exc), settings.steam_web_api_key)}

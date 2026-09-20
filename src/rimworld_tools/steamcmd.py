@@ -14,6 +14,7 @@ from typing import Any
 import requests
 
 from . import acf, paths, symlink
+from . import cache as cache_mod
 from .config import RIMWORLD_APP_ID, STEAMCMD_BATCH_SIZE, Settings
 
 logger = logging.getLogger(__name__)
@@ -366,6 +367,7 @@ def status(settings: Settings) -> dict[str, Any]:
         "acf_present": acf_present,
         "acf_item_count": acf_count,
         "steam_processes_running": acf.steam_processes_running(),
+        "web_api_cache": cache_mod.Cache(settings.cache_dir).stats(),
         "warnings": warnings,
     }
 

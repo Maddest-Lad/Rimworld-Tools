@@ -8,6 +8,7 @@ from typing import Any
 
 import requests
 
+from . import cache as cache_mod
 from .config import RIMWORLD_APP_ID
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,10 @@ class ChunkedResult:
     items: dict[str, dict[str, Any]] = field(default_factory=dict)
     failed_ids: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    cache: cache_mod.Lookup = field(default_factory=cache_mod.Lookup)
+
+    def cache_summary(self) -> dict[str, Any] | None:
+        return self.cache.summary(len(self.items) + len(self.failed_ids))
 
 
 def _post_with_retry(url: str, data: dict[str, Any], key: str | None = None) -> dict[str, Any]:
@@ -106,11 +111,26 @@ def _int_or_none(raw: object) -> int | None:
         return None
 
 
-def file_details(pfids: list[str], key: str | None = None) -> ChunkedResult:
-    """GetPublishedFileDetails, chunked at 300. Keyless. Partial results survive a bad chunk."""
+def file_details(
+    pfids: list[str],
+    key: str | None = None,
+    cache: cache_mod.Cache | None = None,
+    refresh: bool = False,
+) -> ChunkedResult:
+    """GetPublishedFileDetails, chunked at 300. Keyless. Partial results survive a bad chunk.
+
+    Cached per pfid, so a 300-id call fetches only what is stale — that is where the API
+    savings are. Failures are never cached.
+    """
     out = ChunkedResult()
-    for i in range(0, len(pfids), FILE_DETAILS_CHUNK):
-        chunk = pfids[i : i + FILE_DETAILS_CHUNK]
+    to_fetch = list(pfids)
+    if cache is not None:
+        out.cache = cache.lookup("file_details", pfids, refresh=refresh)
+        out.items.update(out.cache.hits)
+        to_fetch = out.cache.misses
+    fetched: dict[str, dict[str, Any]] = {}
+    for i in range(0, len(to_fetch), FILE_DETAILS_CHUNK):
+        chunk = to_fetch[i : i + FILE_DETAILS_CHUNK]
         form: dict[str, Any] = {"itemcount": len(chunk)}
         for n, pfid in enumerate(chunk):
             form[f"publishedfileids[{n}]"] = pfid
@@ -124,7 +144,10 @@ def file_details(pfids: list[str], key: str | None = None) -> ChunkedResult:
             if isinstance(entry, dict) and entry.get("publishedfileid"):
                 item = _normalise(entry)
                 out.items[item["pfid"]] = item
+                fetched[item["pfid"]] = item
         out.failed_ids.extend(p for p in chunk if p not in out.items)
+    if cache is not None:
+        cache.store("file_details", fetched)
     return out
 
 
@@ -136,23 +159,38 @@ def _ci_get(d: dict[str, Any], key: str, default: Any = None) -> Any:
     return default
 
 
-def collection_children(collection_id: str, key: str | None = None) -> list[str] | None:
-    """Child pfids of a collection, mods only (filetype == 0). None if not a collection."""
+def collection_children(
+    collection_id: str,
+    key: str | None = None,
+    cache: cache_mod.Cache | None = None,
+    refresh: bool = False,
+) -> tuple[list[str] | None, float | None]:
+    """(child pfids, cached_at). Mods only (filetype == 0). Children None if not a collection.
+
+    Only positive results are cached: "not a collection" may just mean private right now.
+    """
+    if cache is not None:
+        look = cache.lookup("collection", [collection_id], refresh=refresh)
+        if collection_id in look.hits:
+            return list(look.hits[collection_id]), look.cached_at[collection_id]
     form = {"collectioncount": 1, "publishedfileids[0]": collection_id}
     body = _post_with_retry(_COLLECTION_URL, form, key)
     details = _ci_get(body.get("response", {}), "collectiondetails", [])
     if not details or not isinstance(details[0], dict):
-        return None
+        return None, None
     if _ci_get(details[0], "result") != 1:
-        return None
+        return None, None
     children = _ci_get(details[0], "children")
     if not isinstance(children, list):
-        return None
-    return [
+        return None, None
+    ids = [
         str(_ci_get(c, "publishedfileid"))
         for c in children
         if isinstance(c, dict) and _ci_get(c, "filetype") == 0
     ]
+    if cache is not None:
+        cache.store("collection", {collection_id: ids})
+    return ids, None
 
 
 def is_private_or_deleted(pfid: str) -> bool | None:
@@ -183,8 +221,21 @@ def search(
     excluded_tags: list[str] | None = None,
     sort: str = "relevance",
     days: int = 90,
+    cache: cache_mod.Cache | None = None,
+    refresh: bool = False,
 ) -> dict[str, Any]:
     """QueryFiles with tag filters. Requires an API key; caller degrades to browse_url without one."""
+    ckey = cache_mod.key_for(query, limit, required_tags, excluded_tags, sort, days)
+    if cache is not None:
+        look = cache.lookup("search", [ckey], refresh=refresh)
+        if ckey in look.hits:
+            hit = dict(look.hits[ckey])
+            at = look.cached_at[ckey]
+            hit["cache"] = {
+                "cached_at": cache_mod.iso(at),
+                "note": cache_mod.describe(at) + ". Pass refresh=true to refetch.",
+            }
+            return hit
     params: dict[str, Any] = {
         "key": key,
         "query_type": SORT_MODES[sort],
@@ -218,7 +269,10 @@ def search(
         for e in body.get("publishedfiledetails", [])
         if isinstance(e, dict) and e.get("publishedfileid")
     ]
-    return {"query": query, "total": body.get("total"), "results": results}
+    out = {"query": query, "total": body.get("total"), "results": results}
+    if cache is not None:
+        cache.store("search", {ckey: out})
+    return out
 
 
 def browse_url(

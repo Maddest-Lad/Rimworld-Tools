@@ -26,6 +26,8 @@ debug log and HugsLib's Ctrl+F12 "share logs" upload contain the same entries.
 
 ## Triage flow
 
+0. **Check `notes/accepted.md`** for signatures or mods already accepted; they go in the
+   "noise" line of the report, not the findings.
 1. **Run the parser.** Note the session count (one per game launch in the file), the active mod
    count RimWorld printed, the *first real error* and the top table.
 2. **Fix the first load error first.** RimWorld merges all XML into one document; a single
@@ -56,7 +58,8 @@ debug log and HugsLib's Ctrl+F12 "share logs" upload contain the same entries.
    half of the non-framework mods in-game, relaunch, rerun the parser with `--since-startup`;
    repeat. Restore with `modlist_diff` guidance afterwards. Never edit `ModsConfig.xml` by hand.
 8. **Report** in this order: what is actually broken (one line), which mod(s) and the evidence,
-   the fix, then what was noise and can be ignored.
+   the fix, then what was noise and can be ignored. If the user says a finding is expected,
+   add it to `notes/accepted.md` (source = `Player.log`, key = signature + mod).
 
 ## Things that look scary but are not
 

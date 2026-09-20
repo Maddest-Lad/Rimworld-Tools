@@ -39,6 +39,14 @@ is the only sanctioned writer of `ModsConfig.xml` (it snapshots first and refuse
 runs). Success from `workshop_subscribe` means subscribed, not downloaded — poll
 `check_mod_updates` before inventorying or sorting new mods.
 
+## Notes (`notes/`)
+
+Pack-specific knowledge the tools cannot know: `accepted.md` (warnings that are known-fine),
+`mods.md` (why a mod is here, quirks), `decisions.md` (history). **Check `accepted.md` before
+reporting any advisory, dependency issue, unresolved id or log error**; when the user says a
+warning is fine or explains a choice, record it there in the same turn. Convention in
+`notes/README.md`.
+
 ## Skills
 
 - `/rimworld-modpack` — build, extend, vet and sort a modpack end to end.

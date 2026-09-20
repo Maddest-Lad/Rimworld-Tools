@@ -24,6 +24,9 @@ tiers and prerequisites, `reference/about-xml.md` for the About.xml / ModsConfig
 - **A native lookup failure is a per-item `failed[].reason`, not proof of unpublishing.** Say what
   the reason was.
 - Never hand-edit `ModsConfig.xml`, `links/workshop` or `links/steam`.
+- **`notes/accepted.md` overrides the tools.** Grep it (by packageId or pfid) before presenting
+  any `dependency_issues`, advisory or `unresolved` id; listed items are "known" at most. When
+  the user waves a warning off or explains a choice, add the row (`notes/README.md`) right away.
 
 ## 1. Baseline (every session)
 
@@ -40,8 +43,9 @@ each `dependency_issues[]` entry names the mod, the missing `package_id`, a `sta
 those before doing anything else — they are the problems the user already has.
 
 Worked example from a real list: `Hospitality: Spa` requires `dubwise.dubsbadhygiene` but the
-user has `dubwise.dubsbadhygiene.lite` active. The fix is a choice (swap Lite for the full mod,
-or drop Spa), not a blind subscribe — ask.
+user has `dubwise.dubsbadhygiene.lite` active. The tool says `not_installed`; `notes/accepted.md`
+says Lite is deliberate and Spa works with it — so this is reported as "known", not as a fix.
+Without such a note, a dependency issue is a choice to put to the user, never a blind subscribe.
 
 ## 2. Discover
 

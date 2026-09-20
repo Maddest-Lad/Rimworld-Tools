@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "rimworld-tools": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "C:\\Users\\sam\\Desktop\\Projects\\Rimworld-Tools\\rimworld-mcp",
+        "run",
+        "-m",
+        "src.rimworld_tools.server"
+      ]
+    }
+  }
+}

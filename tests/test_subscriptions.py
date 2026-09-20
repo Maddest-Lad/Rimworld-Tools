@@ -12,7 +12,7 @@ from src.rimworld_tools.config import Settings
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(tmp_path, None, tmp_path / "dbs", 50, None)
+    return Settings(None, tmp_path / "dbs")
 
 
 async def test_subscribe_normalises_before_helper(settings, monkeypatch):

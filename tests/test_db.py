@@ -14,11 +14,8 @@ from src.rimworld_tools.config import Settings
 
 def _settings(tmp_path: Path) -> Settings:
     return Settings(
-        steamcmd_prefix=tmp_path / "prefix",
         mods_dir=None,
         db_dir=tmp_path / "dbs",
-        max_download_items=50,
-        steam_web_api_key=None,
     )
 
 

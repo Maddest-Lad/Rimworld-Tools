@@ -1,48 +1,13 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
-from . import (
-    acf,
-    advisories,
-    paths,
-    steam_transport,
-    steamcmd,
-    symlink,
-    workshop_ids,
-    workshop_queries,
-)
-from . import cache as cache_mod
+from . import advisories, paths, steam_transport, workshop_ids, workshop_queries
 from .config import RIMWORLD_APP_ID, Settings
 from .steam_client import SORT_MODES
 
 logger = logging.getLogger(__name__)
-
-
-def _steam_client_acf(settings: Settings) -> Path | None:
-    found = paths.discover(settings).workshop_dir
-    if not found:
-        return None
-    p = Path(found.path).parent.parent / f"appworkshop_{RIMWORLD_APP_ID}.acf"
-    return p if p.is_file() else None
-
-
-def installed_items(settings: Settings, include_steam_client: bool) -> dict[str, dict[str, Any]]:
-    """ACF entries by pfid, tagged with source. SteamCMD wins if a pfid appears in both."""
-    out: dict[str, dict[str, Any]] = {}
-    if include_steam_client and (client := _steam_client_acf(settings)):
-        for pfid, item in acf.items(acf.load(client)).items():
-            out[pfid] = {"pfid": pfid, "source": "steam", "local_timeupdated": item.timeupdated}
-    if settings.acf_path.is_file():
-        for pfid, item in acf.items(acf.load(settings.acf_path)).items():
-            out[pfid] = {"pfid": pfid, "source": "steamcmd", "local_timeupdated": item.timeupdated}
-    return out
-
-
-def _cache(settings: Settings) -> cache_mod.Cache:
-    return cache_mod.Cache(settings.cache_dir)
 
 
 async def mod_info(
@@ -221,63 +186,3 @@ async def search(
             "`total` is Steam's ranked candidate count, not a match count."
         )
     return out
-
-
-def _delete_manifests(settings: Settings, manifests: set[str]) -> list[str]:
-    removed: list[str] = []
-    for m in manifests:
-        p = settings.depotcache_dir / f"{RIMWORLD_APP_ID}_{m}.manifest"
-        if p.is_file():
-            p.unlink()
-            removed.append(p.name)
-    return removed
-
-
-def delete(settings: Settings, pfids: list[str | int]) -> dict[str, Any]:
-    """Remove item dir + BOTH ACF sections + depotcache manifest. Skipping the ACF purge makes
-    SteamCMD believe the item is still installed and silently refuse to re-download it."""
-    good, bad = steamcmd._normalise_pfids(pfids)
-    if not good:
-        return {"error": "No valid published file ids given."}
-    running = acf.steam_processes_running(acf.STEAMCMD_PROCESSES)
-    if running:
-        return {
-            "error": f"Refusing to delete while {', '.join(running)} is running.",
-            "hint": "SteamCMD rewrites the ACF on exit and would resurrect the entries.",
-        }
-    mods_dir = steamcmd.resolve_mods_dir(settings)
-    if mods_dir is None:
-        return {"error": "Mods folder not found.", "hint": "Set RIMWORLD_TOOLS_MODS_DIR."}
-
-    data = acf.load(settings.acf_path)
-    deleted: list[dict[str, Any]] = []
-    failed: list[dict[str, str]] = [{"pfid": b, "reason": "not numeric"} for b in bad]
-    skipped: list[dict[str, str]] = []
-    managed = acf.items(data)
-    for pfid in good:
-        if pfid not in managed:
-            skipped.append({"pfid": pfid, "reason": "not managed by SteamCMD (no ACF entry)"})
-            continue
-        target = mods_dir / pfid
-        entry: dict[str, Any] = {"pfid": pfid, "dir_removed": False}
-        if target.is_dir() and symlink.read_junction(target) is None:
-            try:
-                symlink.rmtree(target)
-                entry["dir_removed"] = True
-            except OSError as exc:
-                failed.append({"pfid": pfid, "reason": f"could not remove {target}: {exc}"})
-                continue
-        entry["acf_removed"] = pfid in acf.items(data)
-        manifests = acf.remove_items(data, [pfid])[pfid]
-        entry["manifests_deleted"] = _delete_manifests(settings, manifests)
-        deleted.append(entry)
-
-    if deleted:
-        backup = acf.save(settings.acf_path, data)
-        return {
-            "deleted": deleted,
-            "failed": failed,
-            "skipped": skipped,
-            "acf_backup": str(backup) if backup else None,
-        }
-    return {"deleted": [], "failed": failed, "skipped": skipped}

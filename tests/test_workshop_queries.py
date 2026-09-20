@@ -7,7 +7,7 @@ from src.rimworld_tools.config import Settings
 
 
 async def test_cache_is_account_and_description_scoped(tmp_path, monkeypatch):
-    settings = Settings(tmp_path, None, tmp_path / "db", 50, None)
+    settings = Settings(None, tmp_path / "db")
     account = "1"
     calls = []
 
@@ -37,7 +37,7 @@ async def test_cache_is_account_and_description_scoped(tmp_path, monkeypatch):
 
 
 async def test_search_filters_validation_and_partial_results(tmp_path, monkeypatch):
-    settings = Settings(tmp_path, None, tmp_path / "db", 50, None)
+    settings = Settings(None, tmp_path / "db")
     remote = AsyncMock(
         return_value={
             "results": [{"title": "Harmony"}],

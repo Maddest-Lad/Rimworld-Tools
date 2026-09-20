@@ -17,7 +17,7 @@ from typing import Any
 
 import requests
 
-from . import symlink
+from . import filesystem
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -115,10 +115,10 @@ def _extract_swap(archive: bytes, dest: Path, expected_filename: str) -> None:
                 backup.rename(dest)
             raise
         if backup is not None:
-            symlink.rmtree(backup)
+            filesystem.rmtree(backup)
     finally:
         if tmp.exists():
-            symlink.rmtree(tmp)
+            filesystem.rmtree(tmp)
 
 
 def _fetch(source: Source, etag: str | None) -> tuple[int, bytes, str | None, str]:

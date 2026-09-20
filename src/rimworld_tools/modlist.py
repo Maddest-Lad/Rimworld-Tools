@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from . import acf, advisories, db, mods, paths, sorting
+from . import advisories, db, mods, paths, processes, sorting
 from .config import Settings
 
 _STEAM_SUFFIX = "_steam"
 # When one packageId is installed several times, ModsConfig names only the id; pick by source.
-_PRIORITY = ("ludeon", "local", "steamcmd", "git", "steam")
-_PRIORITY_STEAM = ("steam", "local", "steamcmd", "git", "ludeon")
+_PRIORITY = ("ludeon", "local", "git", "steam")
+_PRIORITY_STEAM = ("steam", "local", "git", "ludeon")
 
 
 @dataclass
@@ -308,7 +308,7 @@ def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
             "error": "Community load-order rules are unavailable, so the active list was not changed.",
             "hint": "Reconnect and retry, or run the maintenance command `db-sync` first.",
         }
-    if not dry_run and (running := acf.steam_processes_running(acf.RIMWORLD_PROCESSES)):
+    if not dry_run and (running := processes.running(processes.RIMWORLD_PROCESSES)):
         return {
             "error": f"Refusing to edit ModsConfig.xml while {', '.join(running)} is running.",
             "hint": "Close RimWorld, then run sort_modlist again.",

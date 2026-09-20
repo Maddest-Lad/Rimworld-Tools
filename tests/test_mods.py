@@ -166,8 +166,8 @@ class TestClassify:
         assert c(sub) == "steam"
         assert c(local) == "local"
         assert c(git) == "git"
-        assert c(cmd) == "steamcmd"
-        assert c(moved) == "steamcmd"
+        assert c(cmd) == "local"
+        assert c(moved) == "local"
         assert c(tmp_path / "elsewhere") == "unknown"
 
     def test_pfid_recovery_order(self, tmp_path: Path) -> None:
@@ -206,11 +206,8 @@ class TestInventory:
         )
         monkeypatch.setattr(paths, "find_steam_root", lambda: None)
         return Settings(
-            steamcmd_prefix=tmp_path / "prefix",
             mods_dir=None,
             db_dir=tmp_path / "dbs",
-            max_download_items=50,
-            steam_web_api_key=None,
         )
 
     def test_compact_default(self, world: Settings) -> None:

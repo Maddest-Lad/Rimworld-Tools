@@ -9,8 +9,8 @@ from typing import Any, Self
 
 from bs4 import BeautifulSoup
 
-from . import acf, advisories, paths
-from .config import RIMWORLD_APP_ID, RIMWORLD_APP_IDS, Settings
+from . import advisories, paths
+from .config import RIMWORLD_APP_IDS, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ _DLC_APP_BY_PID = {
 _PFID_URL_RE = re.compile(r"(?:CommunityFilePage/|[?&]id=)(\d+)")
 _MAJOR_MINOR_RE = re.compile(r"^\s*v?(\d+)\.(\d+)")
 
-SOURCES = ("ludeon", "steam", "steamcmd", "git", "local", "unknown")
+SOURCES = ("ludeon", "steam", "git", "local", "unknown")
 
 
 class PackageId(str):
@@ -300,13 +300,13 @@ def classify(
         return "steam"
     if mods_dir and parent == mods_dir:
         pfid_file = read_pfid_file(mod_dir)
-        # SteamCMD before git: some Workshop items ship a stray .git directory.
+        # Numeric Workshop copies may ship a stray .git directory.
         if pfid_file and pfid_file == mod_dir.name:
-            return "steamcmd"
+            return "local"
         if (mod_dir / ".git").exists():  # this folder's repo, not an ancestor's
             return "git"
         if pfid_file:
-            return "steamcmd"
+            return "local"
         return "local"
     return "unknown"
 
@@ -388,23 +388,10 @@ def scan(settings: Settings) -> Inventory:
 # --- tool-facing shaping ----------------------------------------------------------------
 
 
-def _timestamps(settings: Settings, inv: Inventory) -> dict[str, int | None]:
-    out: dict[str, int | None] = {}
-    found = paths.discover(settings).workshop_dir
-    if found:
-        client = Path(found.path).parent.parent / f"appworkshop_{RIMWORLD_APP_ID}.acf"
-        if client.is_file():
-            out.update({p: i.timeupdated for p, i in acf.items(acf.load(client)).items()})
-    if settings.acf_path.is_file():
-        out.update({p: i.timeupdated for p, i in acf.items(acf.load(settings.acf_path)).items()})
-    return out
-
-
 def _record(
     m: Mod,
     game_mm: str | None,
     detail: bool,
-    timeupdated: int | None,
     ctx: advisories.Context,
     installed: set[str],
 ) -> dict[str, Any]:
@@ -443,7 +430,6 @@ def _record(
                 "authors": a.authors if a else [],
                 "supported_versions": supported,
                 "mod_version": a.mod_version if a else None,
-                "timeupdated": timeupdated,
                 "dependencies": [
                     {"package_id": d.package_id, "name": d.display_name, "pfid": d.pfid}
                     for d in (a.dependencies if a else [])
@@ -468,7 +454,6 @@ def inventory(
     inv = scan(settings)
     game_mm = major_minor(inv.game_version)
     wanted = {PackageId(p) for p in package_ids} if package_ids else None
-    stamps = _timestamps(settings, inv) if detail else {}
 
     mods = inv.mods
     if source:
@@ -480,7 +465,7 @@ def inventory(
 
     ctx = advisories.Context.load(settings, game_mm)
     installed = {m.package_id for m in inv.mods if m.package_id}
-    records = [_record(m, game_mm, detail, stamps.get(m.pfid or ""), ctx, installed) for m in mods]
+    records = [_record(m, game_mm, detail, ctx, installed) for m in mods]
     duplicates = {
         pid: [str(x.path) for x in ms]
         for pid, ms in inv.by_package_id.items()

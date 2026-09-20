@@ -4,19 +4,13 @@ import argparse
 import asyncio
 import json
 
-from . import acf, cache, db, steamcmd
+from . import cache, db, paths, steam_transport
 from .config import Settings, load_environment
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="RimWorld Tools maintenance commands")
     commands = parser.add_subparsers(dest="command", required=True)
-    setup = commands.add_parser("steamcmd-setup")
-    setup.add_argument("--force-reinstall", action="store_true")
-    setup.add_argument("--force-junction", action="store_true")
-    commands.add_parser("depot-cache-clear")
-    repair = commands.add_parser("acf-repair")
-    repair.add_argument("--write", action="store_true")
     sync = commands.add_parser("db-sync")
     sync.add_argument("--force", action="store_true")
     sync.add_argument("sources", nargs="*")
@@ -26,17 +20,15 @@ def _parser() -> argparse.ArgumentParser:
 
 
 async def _run(args: argparse.Namespace, settings: Settings) -> dict:
-    if args.command == "steamcmd-setup":
-        return await steamcmd.setup(settings, args.force_reinstall, args.force_junction)
-    if args.command == "depot-cache-clear":
-        return steamcmd.clear_depot_cache(settings)
-    if args.command == "acf-repair":
-        return acf.repair(settings.acf_path, settings.workshop_content_dir, dry_run=not args.write)
     if args.command == "db-sync":
-        return db.sync(settings, args.sources or None, args.force)
+        return await asyncio.to_thread(db.sync, settings, args.sources or None, args.force)
     if args.command == "cache-clear":
-        return cache.Cache(settings.cache_dir).clear()
-    return {"steamcmd": steamcmd.status(settings), "databases": db.status(settings)}
+        return await asyncio.to_thread(cache.Cache(settings.cache_dir).clear)
+    return {
+        "steam": await steam_transport.request(settings, "probe"),
+        "rimworld": (await asyncio.to_thread(paths.discover, settings)).to_dict(),
+        "databases": await asyncio.to_thread(db.status, settings),
+    }
 
 
 def main() -> None:

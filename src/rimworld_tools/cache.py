@@ -19,8 +19,6 @@ logger = logging.getLogger(__name__)
 HOUR = 3600
 # TTLs matched to how fast the data actually changes, not to how often tools get called.
 TTL_FILE_DETAILS = 6 * HOUR
-TTL_UNPUBLISHED = 1 * HOUR  # private mods get republished; re-check sooner
-TTL_COLLECTION = 24 * HOUR
 TTL_SEARCH = 1 * HOUR
 
 
@@ -38,18 +36,6 @@ def _state_for(root: Path) -> _CacheState:
     key = root.resolve()
     with _states_lock:
         return _states.setdefault(key, _CacheState())
-
-
-def ttl_for(namespace: str, data: Any) -> int:
-    if namespace == "file_details":
-        return (
-            TTL_UNPUBLISHED
-            if isinstance(data, dict) and data.get("unpublished")
-            else TTL_FILE_DETAILS
-        )
-    if namespace == "collection":
-        return TTL_COLLECTION
-    return TTL_SEARCH
 
 
 def key_for(*parts: Any) -> str:
@@ -156,7 +142,7 @@ class Cache:
                 if not entry:
                     out.misses.append(k)
                     continue
-                max_age = ttl(entry["data"]) if ttl else ttl_for(namespace, entry["data"])
+                max_age = ttl(entry["data"]) if ttl else TTL_SEARCH
                 if now - entry["at"] > max_age:
                     out.misses.append(k)
                     continue

@@ -67,11 +67,8 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     )
     monkeypatch.setattr(paths, "find_steam_root", lambda: None)
     return Settings(
-        steamcmd_prefix=tmp_path / "prefix",
         mods_dir=None,
         db_dir=tmp_path / "dbs",
-        max_download_items=50,
-        steam_web_api_key=None,
     )
 
 
@@ -148,9 +145,9 @@ class TestSortModlist:
     def test_write_refuses_while_rimworld_is_running(
         self, world: Settings, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.rimworld_tools import acf
+        from src.rimworld_tools import processes
 
-        monkeypatch.setattr(acf, "steam_processes_running", lambda _: ["rimworldwin64.exe"])
+        monkeypatch.setattr(processes, "running", lambda _: ["rimworldwin64.exe"])
         out = modlist.sort_modlist(world, dry_run=False)
         assert "while rimworldwin64.exe is running" in out["error"]
 

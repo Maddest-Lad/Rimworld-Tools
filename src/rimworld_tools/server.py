@@ -52,7 +52,7 @@ async def list_installed_mods(
     include_invalid: bool = False,
 ) -> dict[str, Any]:
     """
-    Every mod on disk with packageId, name, source (ludeon|steam|steamcmd|git|local), pfid and
+    Every mod on disk with packageId, name, source (ludeon|steam|git|local), pfid and
     version_ok. Compact by default — detail=true adds paths, authors, dependencies and load rules.
     Filter by source or package_ids to keep the payload small; duplicates are reported separately.
     Example: list_installed_mods(source="steam", detail=true)

@@ -44,4 +44,4 @@ uv run -m src.rimworld_tools.maintenance depot-cache-clear
 Sorting writes require current community load-order rules and refuse to edit `ModsConfig.xml`
 while RimWorld is running. Read-only analysis remains available when either condition is not met.
 
-Run `make config` to print ready-to-paste snippets for `mcp.json`, a Claude Code command, and Codex.
+Run `make config` to print ready-to-paste snippets for `mcp.json`, a self-contained Claude Code command, and Codex.

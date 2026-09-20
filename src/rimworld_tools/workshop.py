@@ -87,7 +87,7 @@ def check_updates(
             "items": [],
             "outdated": [],
             "not_installed": missing,
-            "hint": "No installed Workshop items recorded. Run workshop_download or steamcmd_setup.",
+            "hint": "No installed Workshop items recorded. Use workshop_subscribe, then wait for Steam to download them.",
         }
     remote = webapi.file_details(list(local), settings.steam_web_api_key, _cache(settings), refresh)
     ctx = advisories.Context.load(settings, detected_game_version(settings))
@@ -125,7 +125,10 @@ def check_updates(
         i["pfid"] for i in items if i.get("outdated") and i["source"] == "steamcmd"
     ]
     if steamcmd_outdated:
-        out["hint"] = f"Update with workshop_download({steamcmd_outdated})."
+        out["hint"] = (
+            f"Legacy SteamCMD copies are outdated: {steamcmd_outdated}. Subscribe with "
+            "workshop_subscribe and select the Steam copies in RimWorld; local copies are not migrated automatically."
+        )
     elif outdated:
         out["hint"] = "Outdated items are Steam-subscribed; the Steam client updates those itself."
     return out
@@ -154,7 +157,7 @@ def expand_collection(settings: Settings, url_or_id: str, refresh: bool = False)
         "pfids": children,
         "items": [{"pfid": c, "title": details.items.get(c, {}).get("title")} for c in children],
         "lookup_failed": details.failed_ids,
-        "hint": f"Download all with workshop_download(pfids=<pfids>) in batches ≤ {settings.max_download_items}.",
+        "hint": "Subscribe with workshop_subscribe(pfids=<pfids>) in batches of at most 50.",
     }
     if cached_at is not None:
         out["cache"] = {

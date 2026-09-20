@@ -78,7 +78,7 @@ class TestCheckUpdates:
         )
         out = workshop.check_updates(s, None, include_steam_client=False)
         assert out["outdated"] == ["1"]
-        assert "workshop_download(['1'])" in out["hint"]
+        assert "workshop_subscribe" in out["hint"]
         by = {i["pfid"]: i for i in out["items"]}
         assert by["2"]["outdated"] is False
 

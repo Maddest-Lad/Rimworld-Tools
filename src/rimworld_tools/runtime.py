@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import db, locking, steamcmd
+from . import db, locking
 from .config import Settings, load_environment
 
 
@@ -16,17 +16,18 @@ class Runtime:
 
     settings: Settings
     _mutation_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    _preparation_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _database_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     @asynccontextmanager
     async def mutation(self):
-        """Serialize SteamCMD files across tasks and MCP processes."""
+        """Serialize subscription changes across tasks and MCP processes."""
         async with self._mutation_lock:
-            lock = locking.WindowsFileLock(self.settings.steamcmd_prefix / ".rimworld-tools.lock")
+            lock = locking.WindowsFileLock(
+                self.settings.db_dir / ".rimworld-tools-subscriptions.lock"
+            )
             if not await asyncio.to_thread(lock.acquire):
                 yield {
-                    "error": "Another RimWorld Tools operation is still using SteamCMD files.",
+                    "error": "Another RimWorld Tools operation is still using Steam subscriptions.",
                     "hint": "Wait for it to finish, then retry.",
                 }
                 return
@@ -34,20 +35,6 @@ class Runtime:
                 yield None
             finally:
                 await asyncio.to_thread(lock.release)
-
-    async def ensure_download_environment(self) -> dict[str, Any] | None:
-        """Install SteamCMD and verify its Mods junction once before a download operation."""
-        async with self._preparation_lock:
-            state = await steamcmd.setup(self.settings)
-        if state.get("error"):
-            return state
-        if state.get("installed") and state.get("junction_ok"):
-            return None
-        return {
-            "error": "SteamCMD environment is not ready for downloads.",
-            "hint": "Check environment_status() for the junction and Mods folder state.",
-            "status": state,
-        }
 
     async def ensure_community_data(self) -> dict[str, Any] | None:
         """Refresh missing or day-old advisory data while preserving usable local copies."""

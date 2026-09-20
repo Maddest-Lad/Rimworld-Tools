@@ -242,7 +242,7 @@ class TestSortModlist:
         by = {i["package_id"]: i for i in out["dependency_issues"]}
         assert by["author.inactive"]["status"] == "installed_but_inactive"
         assert by["author.absent"]["status"] == "not_installed"
-        assert by["author.absent"]["action"] == {"tool": "workshop_download", "pfids": ["777"]}
+        assert by["author.absent"]["action"] == {"tool": "workshop_subscribe", "pfids": ["777"]}
 
 
 class TestSnapshotsAndDiff:

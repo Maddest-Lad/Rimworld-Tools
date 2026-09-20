@@ -226,7 +226,7 @@ class TestInventory:
                 "kind": "missing_dependency",
                 "severity": "warn",
                 "message": "Requires 'Prepatcher' (pfid 2934420800), not installed.",
-                "action": {"tool": "workshop_download", "pfids": ["2934420800"]},
+                "action": {"tool": "workshop_subscribe", "pfids": ["2934420800"]},
             }
         ]
         assert rec["pfid"] == "2009463077"

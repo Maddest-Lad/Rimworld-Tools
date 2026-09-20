@@ -262,7 +262,7 @@ def prepare(settings: Settings) -> Prepared | dict[str, Any]:
             }
             pfid = d.pfid or ctx.pfid_of(dep)
             if not installed and pfid:
-                issue["action"] = {"tool": "workshop_download", "pfids": [pfid]}
+                issue["action"] = {"tool": "workshop_subscribe", "pfids": [pfid]}
             issues.append(issue)
     return Prepared(
         cfg,

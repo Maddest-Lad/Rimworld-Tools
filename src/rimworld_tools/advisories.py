@@ -98,7 +98,7 @@ class Context:
                 "warn" if unpublished else "info",
                 f"{state}. Maintained replacement: '{repl.new_name or repl.new_pfid}' "
                 f"(pfid {repl.new_pfid}){versions}.",
-                {"tool": "workshop_download", "pfids": [repl.new_pfid]},
+                {"tool": "workshop_subscribe", "pfids": [repl.new_pfid]},
             )
         if unpublished:
             return Advisory(
@@ -129,7 +129,7 @@ class Context:
             return None
         pfid = dep_pfid or self.pfid_of(pid)
         name = dep_name or self.name_of(pid, pfid) or pid
-        action = {"tool": "workshop_download", "pfids": [pfid]} if pfid else None
+        action = {"tool": "workshop_subscribe", "pfids": [pfid]} if pfid else None
         where = f" (pfid {pfid})" if pfid else " (no Workshop id known)"
         return Advisory(
             "missing_dependency", "warn", f"Requires '{name}'{where}, not installed.", action

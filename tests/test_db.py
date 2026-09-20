@@ -288,7 +288,7 @@ class TestAdvisories:
         a = ctx.replacement("555", unpublished=True)
         assert a is not None and a.kind == "replaced" and a.severity == "warn"
         assert "Gone Continued" in a.message and "999" in a.message
-        assert a.action == {"tool": "workshop_download", "pfids": ["999"]}
+        assert a.action == {"tool": "workshop_subscribe", "pfids": ["999"]}
         bare = ctx.replacement("777", unpublished=True)
         assert bare is not None and bare.kind == "unpublished"
         superseded = ctx.replacement("111", unpublished=False)
@@ -318,7 +318,7 @@ class TestAdvisories:
         a = ctx.missing_dependency("author.dep", None, None, [], installed)
         assert a is not None
         assert "'Dep Legacy'" in a.message and "222" in a.message
-        assert a.action == {"tool": "workshop_download", "pfids": ["222"]}
+        assert a.action == {"tool": "workshop_subscribe", "pfids": ["222"]}
         assert ctx.missing_dependency("author.dep", None, None, ["AUTHOR.ALIVE"], installed) is None
         unknown = ctx.missing_dependency("nobody.knows", None, None, [], installed)
         assert unknown is not None and unknown.action is None

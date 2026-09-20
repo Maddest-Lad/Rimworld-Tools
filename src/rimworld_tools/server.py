@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import modlist, mods, paths, runtime, steamcmd, workshop
+from . import modlist, mods, paths, runtime, subscriptions, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -21,35 +21,27 @@ def _settings() -> Settings:
 @mcp.tool
 async def environment_status() -> dict[str, Any]:
     """
-    Show RimWorld discovery plus SteamCMD readiness in one compact read-only result.
+    Show RimWorld discovery and Steam client availability in one compact read-only result.
     Example: environment_status()
     """
     settings = _settings()
-    status = await asyncio.to_thread(steamcmd.status, settings)
+    status = await asyncio.to_thread(subscriptions.status, settings)
     status["rimworld"] = (await asyncio.to_thread(paths.discover, settings)).to_dict()
     return status
 
 
 @mcp.tool
-async def workshop_download(
-    pfids: list[str | int], validate: bool = False, clear_depot_cache: bool = False
-) -> dict[str, Any]:
+async def workshop_subscribe(pfids: list[str | int]) -> dict[str, Any]:
     """
-    Download or update Workshop mods by published file id straight into the Mods folder.
-    Blocks until done; batches of 25 internally. Returns succeeded and failed with reasons.
-    validate re-hashes existing files (slow, repairs corrupt installs).
-    Example: workshop_download(["2009463077", "1631756268"])
+    Subscribe the signed-in Steam account to RimWorld mods (up to 50 ids).
+    Steam must be running; downloads happen asynchronously after subscription succeeds.
+    Example: workshop_subscribe(["2009463077", "1631756268"])
     """
     active = runtime.get()
     async with active.mutation() as blocked:
         if blocked is not None:
             return blocked
-        prepared = await active.ensure_download_environment()
-        if prepared is not None:
-            return prepared
-        return await steamcmd.download(
-            _settings(), pfids, validate=validate, clear_cache=clear_depot_cache
-        )
+        return await subscriptions.change(_settings(), pfids, subscribe=True)
 
 
 @mcp.tool
@@ -63,7 +55,7 @@ async def list_installed_mods(
     Every mod on disk with packageId, name, source (ludeon|steam|steamcmd|git|local), pfid and
     version_ok. Compact by default — detail=true adds paths, authors, dependencies and load rules.
     Filter by source or package_ids to keep the payload small; duplicates are reported separately.
-    Example: list_installed_mods(source="steamcmd", detail=true)
+    Example: list_installed_mods(source="steam", detail=true)
     """
     await runtime.get().ensure_community_data()
     return await asyncio.to_thread(
@@ -159,17 +151,17 @@ async def workshop_search(
 
 
 @mcp.tool
-async def workshop_delete(pfids: list[str | int]) -> dict[str, Any]:
+async def workshop_unsubscribe(pfids: list[str | int]) -> dict[str, Any]:
     """
-    Delete SteamCMD-managed mods: removes the folder, purges both ACF sections and the depot
-    manifest so a later re-download actually downloads. Refuses while steamcmd.exe is running.
-    Example: workshop_delete(["2009463077"])
+    Unsubscribe the signed-in Steam account from RimWorld mods (up to 50 ids).
+    Steam handles removal after the game exits; local Mods copies are untouched.
+    Example: workshop_unsubscribe(["2009463077"])
     """
     active = runtime.get()
     async with active.mutation() as blocked:
         if blocked is not None:
             return blocked
-        return await asyncio.to_thread(workshop.delete, _settings(), pfids)
+        return await subscriptions.change(_settings(), pfids, subscribe=False)
 
 
 @mcp.tool

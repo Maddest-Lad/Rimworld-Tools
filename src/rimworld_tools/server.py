@@ -6,12 +6,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import acf, cache, db, modlist, mods, paths, steamcmd, workshop
+from . import acf, cache, db, modlist, mods, paths, runtime, steamcmd, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("rimworld-tools")
+
+
+def _settings() -> Settings:
+    return runtime.get().settings
 
 
 @mcp.tool
@@ -21,7 +25,7 @@ async def rimworld_locate() -> dict[str, Any]:
     Each result carries the provenance of how it was found; nulls mean it could not be located.
     Example: rimworld_locate()
     """
-    settings = Settings.from_env()
+    settings = _settings()
     found = await asyncio.to_thread(paths.discover, settings)
     result = found.to_dict()
     if found.game_dir is None:
@@ -39,7 +43,19 @@ async def steamcmd_status() -> dict[str, Any]:
     folder, how many items does the ACF record. Call this before download/delete tools.
     Example: steamcmd_status()
     """
-    return await asyncio.to_thread(steamcmd.status, Settings.from_env())
+    return await asyncio.to_thread(steamcmd.status, _settings())
+
+
+@mcp.tool
+async def environment_status() -> dict[str, Any]:
+    """
+    Show RimWorld discovery plus SteamCMD readiness in one compact read-only result.
+    Example: environment_status()
+    """
+    settings = _settings()
+    status = await asyncio.to_thread(steamcmd.status, settings)
+    status["rimworld"] = (await asyncio.to_thread(paths.discover, settings)).to_dict()
+    return status
 
 
 @mcp.tool
@@ -52,7 +68,7 @@ async def steamcmd_setup(
     force_junction replaces whatever occupies the junction path; force_reinstall re-downloads.
     Example: steamcmd_setup()
     """
-    return await steamcmd.setup(Settings.from_env(), force_reinstall, force_junction)
+    return await steamcmd.setup(_settings(), force_reinstall, force_junction)
 
 
 @mcp.tool
@@ -65,8 +81,11 @@ async def workshop_download(
     validate re-hashes existing files (slow, repairs corrupt installs).
     Example: workshop_download(["2009463077", "1631756268"])
     """
+    prepared = await runtime.get().ensure_download_environment()
+    if prepared is not None:
+        return prepared
     return await steamcmd.download(
-        Settings.from_env(), pfids, validate=validate, clear_cache=clear_depot_cache
+        _settings(), pfids, validate=validate, clear_cache=clear_depot_cache
     )
 
 
@@ -77,7 +96,7 @@ async def clear_depot_cache() -> dict[str, Any]:
     write nothing, or fail with disk/manifest errors.
     Example: clear_depot_cache()
     """
-    return await asyncio.to_thread(steamcmd.clear_depot_cache, Settings.from_env())
+    return await asyncio.to_thread(steamcmd.clear_depot_cache, _settings())
 
 
 @mcp.tool
@@ -87,7 +106,7 @@ async def acf_repair(dry_run: bool = True) -> dict[str, Any]:
     re-downloads silently. dry_run lists orphans without writing; the write keeps a .backup.
     Example: acf_repair(dry_run=False)
     """
-    settings = Settings.from_env()
+    settings = _settings()
     return await asyncio.to_thread(
         acf.repair, settings.acf_path, settings.workshop_content_dir, dry_run
     )
@@ -101,7 +120,7 @@ async def db_sync(sources: list[str] | None = None, force: bool = False) -> dict
     These power the per-mod advisories in list_installed_mods / check_mod_updates.
     Example: db_sync()
     """
-    return await asyncio.to_thread(db.sync, Settings.from_env(), sources, force)
+    return await asyncio.to_thread(db.sync, _settings(), sources, force)
 
 
 @mcp.tool
@@ -118,7 +137,7 @@ async def list_installed_mods(
     Example: list_installed_mods(source="steamcmd", detail=true)
     """
     return await asyncio.to_thread(
-        mods.inventory, Settings.from_env(), source, package_ids, detail, include_invalid
+        mods.inventory, _settings(), source, package_ids, detail, include_invalid
     )
 
 
@@ -129,7 +148,7 @@ async def workshop_mod_info(pfids: list[str | int], refresh: bool = False) -> di
     Cached per item for 6h; responses say what came from cache and when. refresh=true refetches.
     Example: workshop_mod_info(["2009463077"])
     """
-    return await asyncio.to_thread(workshop.mod_info, Settings.from_env(), pfids, refresh)
+    return await asyncio.to_thread(workshop.mod_info, _settings(), pfids, refresh)
 
 
 @mcp.tool
@@ -143,7 +162,7 @@ async def check_mod_updates(
     Example: check_mod_updates()
     """
     return await asyncio.to_thread(
-        workshop.check_updates, Settings.from_env(), pfids, include_steam_client, refresh
+        workshop.check_updates, _settings(), pfids, include_steam_client, refresh
     )
 
 
@@ -155,7 +174,7 @@ async def collection_expand(collection_url_or_id: str, refresh: bool = False) ->
     Example: collection_expand("https://steamcommunity.com/sharedfiles/filedetails/?id=2896394545")
     """
     return await asyncio.to_thread(
-        workshop.expand_collection, Settings.from_env(), collection_url_or_id, refresh
+        workshop.expand_collection, _settings(), collection_url_or_id, refresh
     )
 
 
@@ -165,7 +184,7 @@ async def resolve_workshop_url(url: str, refresh: bool = False) -> dict[str, Any
     Turn a pasted Workshop URL or id into {pfid, kind: mod|collection|unpublished}.
     Example: resolve_workshop_url("https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077")
     """
-    return await asyncio.to_thread(workshop.resolve_url, Settings.from_env(), url, refresh)
+    return await asyncio.to_thread(workshop.resolve_url, _settings(), url, refresh)
 
 
 @mcp.tool
@@ -189,7 +208,7 @@ async def workshop_search(
     """
     return await asyncio.to_thread(
         workshop.search,
-        Settings.from_env(),
+        _settings(),
         query,
         limit,
         game_version,
@@ -208,7 +227,7 @@ async def workshop_delete(pfids: list[str | int]) -> dict[str, Any]:
     manifest so a later re-download actually downloads. Refuses while steamcmd.exe is running.
     Example: workshop_delete(["2009463077"])
     """
-    return await asyncio.to_thread(workshop.delete, Settings.from_env(), pfids)
+    return await asyncio.to_thread(workshop.delete, _settings(), pfids)
 
 
 @mcp.tool
@@ -217,7 +236,7 @@ async def cache_clear() -> dict[str, Any]:
     Wipe the Steam Web API response cache (item details, collections, searches).
     Example: cache_clear()
     """
-    return await asyncio.to_thread(cache.Cache(Settings.from_env().cache_dir).clear)
+    return await asyncio.to_thread(cache.Cache(_settings().cache_dir).clear)
 
 
 @mcp.tool
@@ -229,7 +248,7 @@ async def sort_modlist(dry_run: bool = True) -> dict[str, Any]:
     On a dependency cycle nothing is written and the cycle's rules are returned with sources.
     Example: sort_modlist(dry_run=false)
     """
-    return await asyncio.to_thread(modlist.sort_modlist, Settings.from_env(), dry_run)
+    return await asyncio.to_thread(modlist.sort_modlist, _settings(), dry_run)
 
 
 @mcp.tool
@@ -239,7 +258,7 @@ async def diagnose_cycles() -> dict[str, Any]:
     (about:<mod>, community, user), plus incompatible active pairs and missing dependencies.
     Example: diagnose_cycles()
     """
-    return await asyncio.to_thread(modlist.diagnose, Settings.from_env())
+    return await asyncio.to_thread(modlist.diagnose, _settings())
 
 
 @mcp.tool
@@ -248,7 +267,7 @@ async def modlist_snapshot(note: str = "", list_only: bool = False) -> dict[str,
     Save the current ModsConfig.xml active list as a named snapshot, or list existing snapshots.
     Example: modlist_snapshot("before adding VE mods")
     """
-    settings = Settings.from_env()
+    settings = _settings()
     if list_only:
         return {"snapshots": await asyncio.to_thread(modlist.list_snapshots, settings)}
     return await asyncio.to_thread(modlist.snapshot, settings, note)
@@ -261,11 +280,12 @@ async def modlist_diff(old: str = "latest", new: str = "current") -> dict[str, A
     (newest snapshot) or a snapshot id.
     Example: modlist_diff("latest", "current")
     """
-    return await asyncio.to_thread(modlist.diff, Settings.from_env(), old, new)
+    return await asyncio.to_thread(modlist.diff, _settings(), old, new)
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    runtime.configure()
     mcp.run()
 
 

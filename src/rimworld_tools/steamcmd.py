@@ -319,6 +319,15 @@ async def download(
             break
 
     result["duration_s"] = round(result["duration_s"], 1)
+    verified: list[str] = []
+    for pfid in result["succeeded"]:
+        if (settings.workshop_content_dir / pfid).is_dir():
+            verified.append(pfid)
+        else:
+            result["failed"].append(
+                {"pfid": pfid, "reason": "SteamCMD reported success but no mod directory was found"}
+            )
+    result["succeeded"] = verified
     result["log_excerpt"] = last_excerpt[-40:]
     if result["failed"] and not result.get("hint"):
         result["hint"] = (

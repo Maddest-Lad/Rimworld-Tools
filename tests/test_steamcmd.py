@@ -196,6 +196,9 @@ class TestBatchingWithFakeProcess:
         async def fake_run_batch(settings: Settings, pfids: list[str], validate: bool, t: float):
             calls.append(list(pfids))
             failed = {p: "failed (Failure)." for p in pfids if p.endswith("9")}
+            for pfid in pfids:
+                if pfid not in failed:
+                    (settings.workshop_content_dir / pfid).mkdir(parents=True, exist_ok=True)
             return steamcmd.BatchResult(
                 succeeded=[p for p in pfids if p not in failed],
                 failed=failed,
@@ -242,6 +245,28 @@ class TestBatchingWithFakeProcess:
         reasons = {f["reason"] for f in out["failed"]}
         assert any("not attempted" in r for r in reasons)
         assert "log on" in out["hint"]
+
+    async def test_success_without_a_mod_directory_is_reported(
+        self, fake_steamcmd: tuple[Settings, list[list[str]]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        settings, _ = fake_steamcmd
+
+        async def success_without_files(*args, **kwargs):
+            return steamcmd.BatchResult(
+                succeeded=["1"],
+                failed={},
+                run_errors=[],
+                timed_out=False,
+                duration_s=0.1,
+                excerpt=[],
+            )
+
+        monkeypatch.setattr(steamcmd, "run_batch", success_without_files)
+        out = await steamcmd.download(settings, ["1"])
+        assert out["succeeded"] == []
+        assert out["failed"] == [
+            {"pfid": "1", "reason": "SteamCMD reported success but no mod directory was found"}
+        ]
 
 
 class TestTailer:

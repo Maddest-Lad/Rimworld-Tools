@@ -205,10 +205,10 @@ def _zip(files: dict[str, str], top: str = "Repo-main") -> bytes:
 class TestSync:
     def test_extract_unwraps_and_swaps(self, tmp_path: Path) -> None:
         dest = tmp_path / "steam_db"
-        db._extract_swap(_zip({"steamDB.json": "1", "nested/other.txt": "x"}), dest)
+        db._extract_swap(_zip({"steamDB.json": "1", "nested/other.txt": "x"}), dest, "steamDB.json")
         assert (dest / "steamDB.json").read_text() == "1"
         assert (dest / "nested" / "other.txt").exists()
-        db._extract_swap(_zip({"steamDB.json": "2"}), dest)
+        db._extract_swap(_zip({"steamDB.json": "2"}), dest, "steamDB.json")
         assert (dest / "steamDB.json").read_text() == "2"
         assert not (dest / "nested").exists()  # old tree fully replaced
         assert not dest.with_name("steam_db.bak").exists()
@@ -218,8 +218,16 @@ class TestSync:
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("../../evil.txt", "x")
         with pytest.raises(ValueError):
-            db._extract_swap(buf.getvalue(), tmp_path / "dest")
+            db._extract_swap(buf.getvalue(), tmp_path / "dest", "steamDB.json")
         assert not (tmp_path / "evil.txt").exists()
+
+    def test_extract_rejects_an_archive_without_the_expected_file(self, tmp_path: Path) -> None:
+        dest = tmp_path / "steam_db"
+        dest.mkdir()
+        (dest / "steamDB.json").write_text("keep")
+        with pytest.raises(ValueError, match="not found"):
+            db._extract_swap(_zip({"wrong.json": "new"}), dest, "steamDB.json")
+        assert (dest / "steamDB.json").read_text() == "keep"
 
     def test_sync_etag_unchanged_and_branch_fallback(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

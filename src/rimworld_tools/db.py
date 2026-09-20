@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import shutil
+import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -80,32 +81,44 @@ def locate(settings: Settings, name: str, filename: str | None = None) -> Path |
     return hits[0] if hits else None
 
 
-def _extract_swap(archive: bytes, dest: Path) -> None:
-    """Extract to a sibling temp dir, unwrap GitHub's `<repo>-<branch>/`, then swap atomically-ish."""
-    tmp = dest.with_name(dest.name + ".new")
-    bak = dest.with_name(dest.name + ".bak")
-    for p in (tmp, bak):
-        if p.exists():
-            symlink.rmtree(p)
-    tmp.mkdir(parents=True)
+def _extract_swap(archive: bytes, dest: Path, expected_filename: str) -> None:
+    """Validate a uniquely staged archive before replacing the previous database tree."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
+    backup: Path | None = None
     root = tmp.resolve()
-    with zipfile.ZipFile(io.BytesIO(archive)) as zf:
-        for member in zf.infolist():
-            target = (tmp / member.filename).resolve()
-            if root not in target.parents and target != root:
-                raise ValueError(f"zip entry escapes destination: {member.filename}")
-            zf.extract(member, tmp)
-    children = [p for p in tmp.iterdir()]
-    if len(children) == 1 and children[0].is_dir():
-        inner = children[0]
-        for item in inner.iterdir():
-            shutil.move(str(item), str(tmp / item.name))
-        inner.rmdir()
-    if dest.exists():
-        dest.rename(bak)
-    tmp.rename(dest)
-    if bak.exists():
-        symlink.rmtree(bak)
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+            for member in zf.infolist():
+                target = (tmp / member.filename).resolve()
+                if root not in target.parents and target != root:
+                    raise ValueError(f"zip entry escapes destination: {member.filename}")
+                zf.extract(member, tmp)
+        children = [p for p in tmp.iterdir()]
+        if len(children) == 1 and children[0].is_dir():
+            inner = children[0]
+            for item in inner.iterdir():
+                shutil.move(str(item), str(tmp / item.name))
+            inner.rmdir()
+        if not any(
+            p.is_file() and p.name.lower() == expected_filename.lower() for p in tmp.rglob("*")
+        ):
+            raise ValueError(f"{expected_filename} not found in archive")
+        if dest.exists():
+            backup = Path(tempfile.mkdtemp(prefix=f".{dest.name}.backup.", dir=dest.parent))
+            backup.rmdir()
+            dest.rename(backup)
+        try:
+            tmp.rename(dest)
+        except OSError:
+            if backup is not None and not dest.exists():
+                backup.rename(dest)
+            raise
+        if backup is not None:
+            symlink.rmtree(backup)
+    finally:
+        if tmp.exists():
+            symlink.rmtree(tmp)
 
 
 def _fetch(source: Source, etag: str | None) -> tuple[int, bytes, str | None, str]:
@@ -135,7 +148,7 @@ def sync_one(settings: Settings, name: str, force: bool = False) -> dict[str, An
     if status != 200:
         return {"source": name, "status": "error", "error": f"HTTP {status}", "url": source.zip_url}
     try:
-        _extract_swap(body, _dir(settings, name))
+        _extract_swap(body, _dir(settings, name), source.filename)
     except (ValueError, OSError, zipfile.BadZipFile) as exc:
         return {"source": name, "status": "error", "error": f"extract failed: {exc}"}
     synced_at = datetime.now(UTC).isoformat(timespec="seconds")

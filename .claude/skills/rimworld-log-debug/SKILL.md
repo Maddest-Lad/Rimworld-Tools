@@ -54,9 +54,12 @@ debug log and HugsLib's Ctrl+F12 "share logs" upload contain the same entries.
    - missing dependency, `Could not find a type` from a framework → `diagnose_cycles()`
      (`missing_dependency` section) then `/rimworld-modpack`.
    - load-order symptoms (a patch applies before its target exists) → `sort_modlist()` dry run.
-7. **Bisect when attribution fails.** `modlist_snapshot("before bisect")`, have the user disable
-   half of the non-framework mods in-game, relaunch, rerun the parser with `--since-startup`;
-   repeat. Restore with `modlist_diff` guidance afterwards. Never edit `ModsConfig.xml` by hand.
+7. **Bisect when attribution fails.** `modlist_snapshot("before bisect")`, then with the user's
+   yes `modlist_disable(<half of the non-framework mods>, dry_run=False)` (its
+   `dependency_issues` show which remaining mods lose a requirement — take those out of the
+   same half), relaunch, rerun the parser with `--since-startup`; repeat. Restore with
+   `modlist_enable` of the `removed[]` from `modlist_diff("<snapshot id>", "current")`, then
+   `sort_modlist(dry_run=False)`. Never edit `ModsConfig.xml` by hand.
 8. **Report** in this order: what is actually broken (one line), which mod(s) and the evidence,
    the fix, then what was noise and can be ignored. If the user says a finding is expected,
    add it to `notes/accepted.md` (source = `Player.log`, key = signature + mod).

@@ -30,14 +30,17 @@ Player.log can be hundreds of MB. Never `Read` it directly; use the log-debug sk
 | `resolve_workshop_url`, `collection_expand` | Resolve pasted links, list collection members |
 | `workshop_subscribe`, `workshop_unsubscribe` | Change the signed-in account's subscriptions (≤50 ids) |
 | `check_mod_updates` | Live subscription / install / download state |
-| `list_installed_mods` | Everything on disk: packageId, name, source, pfid, `version_ok`, advisories |
+| `list_installed_mods` | Everything on disk: packageId, name, source, pfid, `version_ok`, `active`, advisories |
+| `modlist_enable`, `modlist_disable` | Activate/deactivate installed mods by packageId or pfid (dry run by default) |
 | `sort_modlist`, `diagnose_cycles` | Sort the active list (dry run by default) or explain cycles/missing deps |
 | `modlist_snapshot`, `modlist_diff` | Snapshot the active list and compare |
 
-Subscribing does not activate a mod; the user enables it in-game. `sort_modlist(dry_run=False)`
-is the only sanctioned writer of `ModsConfig.xml` (it snapshots first and refuses while the game
-runs). Success from `workshop_subscribe` means subscribed, not downloaded — poll
-`check_mod_updates` before inventorying or sorting new mods.
+Subscribing does not activate a mod; `modlist_enable` does (or the user, in-game).
+`modlist_enable`, `modlist_disable` and `sort_modlist` with `dry_run=False` are the only
+sanctioned writers of `ModsConfig.xml` (each snapshots first and refuses while the game runs).
+Enabled mods land at the end of the load order — sort afterwards. Success from
+`workshop_subscribe` means subscribed, not downloaded — poll `check_mod_updates` before
+inventorying, enabling or sorting new mods.
 
 ## Notes (`notes/`)
 
@@ -56,6 +59,6 @@ warning is fine or explains a choice, record it there in the same turn. Conventi
 
 - Never open, read or print `.env` files anywhere in this workspace (only `.env-template`).
 - Never edit Steam manifests or anything under `links/workshop` or `links/steam`.
-- Do not hand-edit `ModsConfig.xml`; go through `sort_modlist` / snapshots.
-- Mutating tools (subscribe/unsubscribe/sort write) need the user's go-ahead for their list.
+- Do not hand-edit `ModsConfig.xml`; go through `modlist_enable` / `modlist_disable` / `sort_modlist` / snapshots.
+- Mutating tools (subscribe/unsubscribe, enable/disable/sort writes) need the user's go-ahead for their list.
 - `make test` / `make check` at the root cover the server and the log parser.

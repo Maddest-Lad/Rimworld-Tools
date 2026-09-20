@@ -26,6 +26,21 @@ class TestRuntime:
             assert blocked is not None
             assert "still using" in blocked["error"]
 
+    async def test_each_scope_uses_its_own_lock_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[str] = []
+        monkeypatch.setattr(
+            locking.WindowsFileLock, "acquire", lambda self, *_: seen.append(self.path.name) or True
+        )
+        monkeypatch.setattr(locking.WindowsFileLock, "release", lambda *_: None)
+        active = runtime.Runtime(_settings(tmp_path))
+        async with active.mutation():
+            pass
+        async with active.mutation("modlist") as blocked:
+            assert blocked is None
+        assert seen == [".rimworld-tools-subscriptions.lock", ".rimworld-tools-modlist.lock"]
+
     async def test_subscription_mutations_are_serialized(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

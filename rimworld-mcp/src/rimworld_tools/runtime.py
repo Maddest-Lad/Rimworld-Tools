@@ -19,15 +19,17 @@ class Runtime:
     _database_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     @asynccontextmanager
-    async def mutation(self):
-        """Serialize subscription changes across tasks and MCP processes."""
+    async def mutation(self, scope: str = "subscriptions"):
+        """Serialize local side effects across tasks and MCP processes, one lock per scope.
+
+        `subscriptions` covers Steam subscription changes; `modlist` covers ModsConfig.xml writes.
+        """
         async with self._mutation_lock:
-            lock = locking.WindowsFileLock(
-                self.settings.db_dir / ".rimworld-tools-subscriptions.lock"
-            )
+            lock = locking.WindowsFileLock(self.settings.db_dir / f".rimworld-tools-{scope}.lock")
             if not await asyncio.to_thread(lock.acquire):
+                what = "Steam subscriptions" if scope == "subscriptions" else "ModsConfig.xml"
                 yield {
-                    "error": "Another RimWorld Tools operation is still using Steam subscriptions.",
+                    "error": f"Another RimWorld Tools operation is still using {what}.",
                     "hint": "Wait for it to finish, then retry.",
                 }
                 return

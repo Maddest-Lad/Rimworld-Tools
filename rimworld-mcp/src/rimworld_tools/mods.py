@@ -394,6 +394,7 @@ def _record(
     detail: bool,
     ctx: advisories.Context,
     installed: set[str],
+    active: set[str] | None,
 ) -> dict[str, Any]:
     a = m.about
     supported = a.supported_versions if a else []
@@ -405,6 +406,8 @@ def _record(
         "pfid": m.pfid,
         "version_ok": version_ok,
     }
+    if active is not None:
+        rec["active"] = m.package_id in active
     warnings = list(m.warnings) + (list(a.warnings) if a else [])
     if warnings:
         rec["warnings"] = warnings
@@ -448,7 +451,9 @@ def inventory(
     package_ids: list[str] | None = None,
     detail: bool = False,
     include_invalid: bool = False,
+    active_ids: set[str] | None = None,
 ) -> dict[str, Any]:
+    """`active_ids` (from modlist) adds an `active` flag per record; None means unknown."""
     if source and source not in SOURCES:
         return {"error": f"Unknown source {source!r}.", "hint": f"One of {list(SOURCES)}."}
     inv = scan(settings)
@@ -465,7 +470,7 @@ def inventory(
 
     ctx = advisories.Context.load(settings, game_mm)
     installed = {m.package_id for m in inv.mods if m.package_id}
-    records = [_record(m, game_mm, detail, ctx, installed) for m in mods]
+    records = [_record(m, game_mm, detail, ctx, installed, active_ids) for m in mods]
     duplicates = {
         pid: [str(x.path) for x in ms]
         for pid, ms in inv.by_package_id.items()
@@ -475,6 +480,9 @@ def inventory(
         "game_version": inv.game_version,
         "roots": inv.roots,
         "count": len(records),
+        "active_count": (
+            sum(1 for r in records if r.get("active")) if active_ids is not None else None
+        ),
         "by_source": {
             s: sum(1 for m in mods if m.source == s)
             for s in SOURCES

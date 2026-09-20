@@ -42,12 +42,13 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | `environment_status()` | Game discovery and verified Steam client readiness |
 | `workshop_subscribe(pfids)` | Subscribe the signed-in Steam user; Steam downloads asynchronously |
 | `workshop_unsubscribe(pfids)` | Unsubscribe; Steam handles removal, local Mods copies remain untouched |
-| `list_installed_mods(source?, package_ids?, detail, include_invalid)` | Every mod on disk: packageId, name, source (ludeon\|steam\|git\|local), pfid, version_ok. Compact by default; `detail` adds paths/deps/load rules |
+| `list_installed_mods(source?, package_ids?, detail, include_invalid)` | Every mod on disk: packageId, name, source (ludeon\|steam\|git\|local), pfid, version_ok, active. Compact by default; `detail` adds paths/deps/load rules |
 | `workshop_mod_info(pfids, refresh=False, include_description=False)` | Native Workshop metadata; optional descriptions with possible-truncation flag; 50/chunk |
 | `check_mod_updates(pfids?)` | Live subscription/install/download state; outdated lists installed items needing updates |
 | `collection_expand(url_or_id)` | Mod pfids inside a collection (nested collections filtered) |
 | `resolve_workshop_url(url)` | Pasted URL/id → `{pfid, kind: mod\|collection\|other\|other_game\|unknown}` |
 | `workshop_search(query?, limit, game_version?, include_translations, include_scenarios, sort, days)` | Workshop search. Defaults: `Mod` + installed version tag (e.g. `1.6`), Translation/Scenario excluded. `sort`: relevance\|trend\|recent\|top\|updated. Requires the signed-in, online Steam client; no web fallback |
+| `modlist_enable(ids, dry_run=True)` / `modlist_disable(ids, dry_run=True)` | Activate/deactivate by packageId or pfid (≤100). Enable appends at the end and reports what the new mods still lack; disable refuses Core and names still-active dependants. Writes snapshot first |
 | `sort_modlist(dry_run=True)` | 4-tier topological load order for ModsConfig.xml. A write snapshots first; a cycle writes nothing |
 | `diagnose_cycles()` | Cycles with per-edge rule sources, incompatible active pairs, missing/inactive dependencies |
 | `modlist_snapshot(note, list_only)` | Save or list snapshots of the active list (`bin/dbs/modlists/`) |
@@ -85,7 +86,7 @@ copy with the same id. No legacy runtime directories or user mod files are migra
 | `steam_client.py`, `steam_types.py` | Native bindings, ABI layouts, session/query handles and callbacks |
 | `workshop_ids.py` | Shared id validation and Workshop URL parsing |
 | `paths.py`, `mods.py` | Windows discovery, local inventory and About.xml parsing |
-| `modlist.py`, `sorting.py` | Selected-copy resolution, snapshots, guarded writes and pure sorting |
+| `modlist.py`, `sorting.py` | Selected-copy resolution, snapshots, enable/disable, guarded writes and pure sorting |
 | `db.py`, `advisories.py` | Community data synchronization and actionable advisories |
 | `filesystem.py`, `processes.py`, `locking.py` | Small Windows filesystem, process and locking utilities |
 | `maintenance.py` | Explicit status, database sync and cache clearing commands |
@@ -176,3 +177,9 @@ each cycle's edges with their sources.
 
 `ModsConfig.xml` entries may carry a `_steam` suffix (RimWorld's "use the Workshop copy" marker);
 it is preserved on write. Ids that resolve to no installed mod are kept at the end, never dropped.
+RimWorld itself writes bare lowercased ids and adds `_steam` only when a local copy shares the
+packageId (verified on a 311-entry list: zero suffixes); `modlist_enable` does the same.
+
+Every `ModsConfig.xml` write (`sort_modlist`, `modlist_enable`, `modlist_disable`) goes through
+`modlist._write_blocked` (refuses while RimWorld runs or if the file changed since it was read) and
+`modlist._commit` (snapshot, then atomic replace), under `runtime.mutation("modlist")`.

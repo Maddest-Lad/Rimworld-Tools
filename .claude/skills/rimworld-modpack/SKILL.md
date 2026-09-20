@@ -13,11 +13,12 @@ tiers and prerequisites, `reference/about-xml.md` for the About.xml / ModsConfig
 ## Ground rules
 
 - **Read-only tools are free; call them liberally.** `workshop_subscribe`, `workshop_unsubscribe`
-  and `sort_modlist(dry_run=False)` change the user's real account or list — state the exact
-  pfids/effect and get a yes first.
+  and `modlist_enable` / `modlist_disable` / `sort_modlist` with `dry_run=False` change the
+  user's real account or list — state the exact pfids/effect and get a yes first.
 - **Subscribed ≠ downloaded ≠ active.** `workshop_subscribe` success means subscribed; Steam
-  downloads later (`check_mod_updates`); the user activates mods in-game. Nothing here writes
-  `activeMods` except the sorter, which only reorders what is already active.
+  downloads later (`check_mod_updates`); `modlist_enable` (or the in-game menu) activates.
+  Only `modlist_enable`, `modlist_disable` and `sort_modlist` write `activeMods`, each with
+  `dry_run=False`; enabled mods land at the end of the order until sorted.
 - **`sort_modlist()` returns the full order (288 entries on a big list).** Never echo it. Report
   `tiers`, `changed_positions`, `unresolved`, `duplicate_active`, `incompatible_active_pairs`,
   `dependency_issues`, and only the moves the user asked about.
@@ -89,7 +90,11 @@ packageIds).
 3. `list_installed_mods(package_ids=[...], detail=True)` — confirm `version_ok`,
    `supported_versions`, `dependencies[] {package_id, name, pfid}`, `load_after`, `load_before`,
    `incompatible_with` parsed. `include_invalid=True` shows folders whose About.xml failed.
-4. Tell the user to enable the new mods in the in-game Mods menu, then continue to step 5.
+4. `modlist_enable(ids)` (dry run) with the packageIds or pfids. Read `enabled[]`,
+   `already_active[]`, `failed[] {id, reason, action?}` and `dependency_issues[]` — a
+   requirement that is `installed_but_inactive` belongs in the same enable call. Then, with a
+   yes, `modlist_enable(ids, dry_run=False)` and continue to step 5. (The in-game Mods menu
+   works too, but the tool reports what the new mods still lack.)
 
 ## 5. Sort
 
@@ -112,7 +117,12 @@ packageIds).
 - After any subscribe/unsubscribe: `diagnose_cycles()` + dry-run sort.
 - `modlist_snapshot(list_only=True)` → `snapshots[] {id, created_at, note, count}` for rollback
   points; `modlist_diff("<id>", "current")` to see what drifted.
+- Removing a mod: `modlist_disable(ids)` first (dry run shows `dependency_issues[]` — the
+  still-active mods that required it; disable those too or keep it), then
+  `modlist_disable(ids, dry_run=False)`, then `workshop_unsubscribe(pfids)` if the user wants the
+  files gone too. Core cannot be disabled; DLC can.
 - `workshop_unsubscribe(pfids)`: Steam deletes the Workshop folder after the game exits; copies
-  in `links/mods` are untouched. A mod that is *also* in `links/mods` keeps working locally.
+  in `links/mods` are untouched. A mod that is *also* in `links/mods` keeps working locally. An
+  unsubscribed mod still in `activeMods` shows up as `unresolved` in the sorter — disable it.
 - Startup errors after a change → `/rimworld-log-debug` (its parser attributes XML errors to
   the mod by `[Source:]`; cross-check with `workshop_mod_info` tags).

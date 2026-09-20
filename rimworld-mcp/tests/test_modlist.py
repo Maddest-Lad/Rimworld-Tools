@@ -275,3 +275,106 @@ class TestSnapshotsAndDiff:
     def test_snapshot_reference_cannot_escape_its_store(self, world: Settings) -> None:
         out = modlist.diff(world, "../outside", "current")
         assert "error" in out
+
+
+class TestChangeActive:
+    def test_enable_appends_and_reports_missing_requirements(self, world: Settings) -> None:
+        mods_dir = Path(modlist.prepare(world).resolved["author.local"].path).parent  # type: ignore[union-attr]
+        for pid, extra in (
+            (
+                "author.new",
+                "<modDependencies><li><packageId>author.inactive</packageId></li></modDependencies>",
+            ),
+            ("author.inactive", ""),
+        ):
+            (mods_dir / pid / "About").mkdir(parents=True)
+            (mods_dir / pid / "About" / "About.xml").write_text(about_xml(pid, extra), "utf-8")
+        before = modlist.config_path(world).read_text(encoding="utf-8")  # type: ignore[union-attr]
+
+        out = modlist.change_active(world, ["Author.New", "author.local", "ghost.absent"], True)
+        assert out["dry_run"] is True
+        assert [e["config_id"] for e in out["enabled"]] == ["author.new"]
+        assert [u["package_id"] for u in out["already_active"]] == ["author.local"]
+        assert out["failed"] == [{"id": "ghost.absent", "reason": "Not installed."}]
+        assert out["active_count_before"] == 4 and out["active_count_after"] == 5
+        assert [i["package_id"] for i in out["dependency_issues"]] == ["author.inactive"]
+        assert out["dependency_issues"][0]["status"] == "installed_but_inactive"
+        assert modlist.config_path(world).read_text(encoding="utf-8") == before  # type: ignore[union-attr]
+
+        out = modlist.change_active(world, ["author.new", "author.inactive"], True, dry_run=False)
+        assert out["written"] and out["snapshot_before"]
+        assert out["dependency_issues"] == []
+        cfg = modlist.read_mods_config(modlist.config_path(world))  # type: ignore[arg-type]
+        assert cfg.active[-2:] == ["author.new", "author.inactive"]
+        assert cfg.known_expansions == ["ludeon.rimworld.royalty"]
+        assert modlist.list_snapshots(world)[0]["note"] == "auto: before modlist_enable"
+
+    def test_enable_resolves_pfids_and_marks_steam_duplicates(self, world: Settings) -> None:
+        p = modlist.config_path(world)
+        assert p is not None
+        cfg = modlist.read_mods_config(p)
+        cfg.active = ["ludeon.rimworld"]
+        modlist.write_mods_config(p, cfg)
+        # author.dup exists as a local copy and as Workshop item 111.
+        out = modlist.change_active(world, ["111", "author.local"], True)
+        by = {e["package_id"]: e for e in out["enabled"]}
+        assert (
+            by["author.dup"]["source"] == "local" and by["author.dup"]["config_id"] == "author.dup"
+        )
+        assert by["author.local"]["config_id"] == "author.local"
+        out = modlist.change_active(world, ["author.dup_steam"], True)
+        assert out["enabled"][0]["source"] == "steam"
+        assert out["enabled"][0]["config_id"] == "author.dup_steam"
+        out = modlist.change_active(world, ["999", ""], True)
+        assert out["enabled"] == [] and len(out["failed"]) == 2
+        assert "Workshop id" in out["failed"][0]["reason"]
+
+    def test_disable_removes_every_entry_and_names_dependants(self, world: Settings) -> None:
+        p = modlist.config_path(world)
+        assert p is not None
+        cfg = modlist.read_mods_config(p)
+        cfg.active.append("AUTHOR.DUP")  # accidental duplicate alongside author.dup_steam
+        modlist.write_mods_config(p, cfg)
+        out = modlist.change_active(world, ["author.dup", "ludeon.rimworld", "not.active"], False)
+        assert out["disabled"][0]["config_ids"] == ["author.dup_steam", "AUTHOR.DUP"]
+        assert out["failed"] == [{"id": "ludeon.rimworld", "reason": "Core cannot be disabled."}]
+        assert [u["package_id"] for u in out["already_inactive"]] == ["not.active"]
+        assert out["dependency_issues"] == []  # loadAfter is a rule, not a requirement
+        assert out["active_count_after"] == 3
+
+        d = Path(modlist.prepare(world).resolved["author.local"].path)  # type: ignore[union-attr]
+        (d / "About" / "About.xml").write_text(
+            about_xml(
+                "author.local",
+                "<modDependencies><li><packageId>author.dup</packageId></li></modDependencies>",
+            ),
+            "utf-8",
+        )
+        out = modlist.change_active(world, ["author.dup"], False, dry_run=False)
+        assert out["written"]
+        assert [(i["mod_id"], i["status"]) for i in out["dependency_issues"]] == [
+            ("author.local", "installed_but_inactive")
+        ]
+        assert modlist.read_mods_config(p).active == [
+            "ludeon.rimworld",
+            "Author.Local",
+            "ghost.notinstalled",
+        ]
+
+    def test_disable_unresolved_id_and_no_op(self, world: Settings) -> None:
+        p = modlist.config_path(world)
+        before = p.read_text(encoding="utf-8")  # type: ignore[union-attr]
+        out = modlist.change_active(world, ["ghost.notinstalled"], False)
+        assert out["disabled"][0]["config_ids"] == ["ghost.notinstalled"]
+        out = modlist.change_active(world, ["not.active"], False, dry_run=False)
+        assert "written" not in out and "Nothing to change" in out["hint"]
+        assert p.read_text(encoding="utf-8") == before  # type: ignore[union-attr]
+
+    def test_write_guards(self, world: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.rimworld_tools import processes
+
+        monkeypatch.setattr(processes, "running", lambda _: ["rimworldwin64.exe"])
+        out = modlist.change_active(world, ["author.local"], False, dry_run=False)
+        assert "while rimworldwin64.exe is running" in out["error"]
+        assert "modlist_disable" in out["hint"]
+        assert "error" in modlist.change_active(world, ["x"] * 101, True)

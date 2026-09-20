@@ -52,14 +52,17 @@ async def list_installed_mods(
     include_invalid: bool = False,
 ) -> dict[str, Any]:
     """
-    Every mod on disk with packageId, name, source (ludeon|steam|git|local), pfid and
-    version_ok. Compact by default — detail=true adds paths, authors, dependencies and load rules.
-    Filter by source or package_ids to keep the payload small; duplicates are reported separately.
+    Every mod on disk with packageId, name, source (ludeon|steam|git|local), pfid, version_ok
+    and active (whether ModsConfig.xml lists it). Compact by default — detail=true adds paths,
+    authors, dependencies and load rules. Filter by source or package_ids to keep the payload
+    small; duplicates are reported separately.
     Example: list_installed_mods(source="steam", detail=true)
     """
     await runtime.get().ensure_community_data()
+    settings = _settings()
+    active = await asyncio.to_thread(modlist.active_ids, settings)
     return await asyncio.to_thread(
-        mods.inventory, _settings(), source, package_ids, detail, include_invalid
+        mods.inventory, settings, source, package_ids, detail, include_invalid, active
     )
 
 
@@ -162,8 +165,49 @@ async def sort_modlist(dry_run: bool = True) -> dict[str, Any]:
     On a dependency cycle nothing is written and the cycle's rules are returned with sources.
     Example: sort_modlist(dry_run=false)
     """
-    await runtime.get().ensure_community_data()
-    return await asyncio.to_thread(modlist.sort_modlist, _settings(), dry_run)
+    active = runtime.get()
+    await active.ensure_community_data()
+    if dry_run:
+        return await asyncio.to_thread(modlist.sort_modlist, _settings(), True)
+    async with active.mutation("modlist") as blocked:
+        if blocked is not None:
+            return blocked
+        return await asyncio.to_thread(modlist.sort_modlist, _settings(), False)
+
+
+@mcp.tool
+async def modlist_enable(ids: list[str], dry_run: bool = True) -> dict[str, Any]:
+    """
+    Activate installed mods in ModsConfig.xml by packageId or Workshop pfid (up to 100).
+    New entries go to the end of the load order, so run sort_modlist afterwards. Reports
+    dependency_issues and incompatible_active_pairs the change introduces; not-installed mods
+    fail with a workshop_subscribe action. dry_run previews; a write snapshots first and refuses
+    while RimWorld is running.
+    Example: modlist_enable(["dubwise.dubsbadhygiene", "2009463077"], dry_run=false)
+    """
+    return await _change_active(ids, enable=True, dry_run=dry_run)
+
+
+@mcp.tool
+async def modlist_disable(ids: list[str], dry_run: bool = True) -> dict[str, Any]:
+    """
+    Deactivate mods in ModsConfig.xml by packageId or Workshop pfid (up to 100); Core cannot be
+    disabled and installed files are untouched. Reports still-active mods that depended on what
+    was removed. dry_run previews; a write snapshots first and refuses while RimWorld is running.
+    Example: modlist_disable(["author.brokenmod"], dry_run=false)
+    """
+    return await _change_active(ids, enable=False, dry_run=dry_run)
+
+
+async def _change_active(ids: list[str], enable: bool, dry_run: bool) -> dict[str, Any]:
+    active = runtime.get()
+    await active.ensure_community_data()
+    if dry_run:
+        return await asyncio.to_thread(modlist.change_active, _settings(), ids, enable, True)
+    async with active.mutation("modlist") as blocked:
+        if blocked is not None:
+            return blocked
+        return await asyncio.to_thread(modlist.change_active, _settings(), ids, enable, False)
 
 
 @mcp.tool

@@ -18,9 +18,12 @@ empty. Expected failures come back as `{"error": ..., "hint": ...}` instead of r
 {"game_version": "1.6.4871 rev590", "roots": {"data": …, "mods": …, "workshop": …},
  "count": 2, "by_source": {"steam": 2}, "mods_with_advisories": 0,
  "mods": [{"package_id": "brrainz.harmony", "name": "Harmony", "source": "steam",
-           "pfid": "2009463077", "version_ok": true,
+           "pfid": "2009463077", "version_ok": true, "active": true,
            "advisories": [{"kind": "replaced", "severity": "warning", "message": "…", "action": {…}}]}]}
 ```
+
+`active` (and top-level `active_count`) reflect `ModsConfig.xml`; both are absent/null when it
+cannot be read. Filter on `active: false` to find installed-but-inactive mods.
 
 `detail=True` adds per mod: `path`, `authors[]`, `supported_versions[]`, `mod_version`,
 `dependencies[] {package_id, name, pfid}`, `load_after[]`, `load_before[]`, `incompatible_with[]`.
@@ -88,7 +91,8 @@ changed, not downloaded.
 
 ```json
 {"ok": true, "failed_tier": null, "cycles": [], "incompatible_active_pairs": [],
- "dependency_issues": [{"mod": "Hospitality: Spa", "requires": "Dubs Bad Hygiene",
+ "dependency_issues": [{"mod": "Hospitality: Spa", "mod_id": "adamas.hospitalityspa",
+                        "requires": "Dubs Bad Hygiene",
                         "package_id": "dubwise.dubsbadhygiene", "status": "not_installed",
                         "action": {"tool": "workshop_subscribe", "pfids": ["836308268"]}}],
  "hint": null}
@@ -96,6 +100,29 @@ changed, not downloaded.
 
 A cycle entry lists its edges as `after -> before` with `sources` (`about:<pid>`, `community`,
 `user`). `status` ∈ `not_installed | installed_but_inactive`.
+
+## `modlist_enable(ids, dry_run=True)` / `modlist_disable(ids, dry_run=True)`
+
+```json
+{"dry_run": true,
+ "enabled": [{"package_id": "v1024.ebframework", "name": "Elite Bionics Framework",
+              "source": "steam", "config_id": "v1024.ebframework"}],
+ "already_active": [],
+ "failed": [{"id": "dubwise.dubsbadhygiene", "reason": "Not installed.",
+             "action": {"tool": "workshop_subscribe", "pfids": ["836308268"]}},
+            {"id": "123", "reason": "No installed mod or Steam DB entry has this Workshop id.", "hint": "…"}],
+ "active_count_before": 306, "active_count_after": 307,
+ "dependency_issues": [], "incompatible_active_pairs": [],
+ "hint": "Enabled mods are appended at the end of the load order; run sort_modlist() next. …"}
+```
+
+`ids` are packageIds (any case, optional `_steam` suffix to prefer the Workshop copy of a
+duplicated mod) or Workshop pfids, ≤100. `modlist_disable` returns `disabled[] {package_id, name,
+config_ids[]}` and `already_inactive[]` instead; its `dependency_issues[]` are the *still-active*
+mods that required what was removed (`mod`, `mod_id`, `requires`, `status:
+installed_but_inactive`). Core fails with `"Core cannot be disabled."`. A write adds `written`,
+`backup`, `snapshot_before`; it refuses while RimWorld runs or if the file changed meanwhile.
+Nothing to change → no write, `hint` says so.
 
 ## `sort_modlist(dry_run=True)`
 

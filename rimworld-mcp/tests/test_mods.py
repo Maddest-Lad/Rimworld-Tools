@@ -254,3 +254,10 @@ class TestInventory:
         assert out["count"] == 5
         junk = next(r for r in out["mods"] if r["name"] == "junk")
         assert junk["warnings"] == ["no About/About.xml"]
+
+    def test_active_flag_only_when_known(self, world: Settings) -> None:
+        assert mods.inventory(world)["active_count"] is None
+        out = mods.inventory(world, active_ids={"brrainz.harmony"})
+        assert out["active_count"] == 3  # every installed copy of an active id is flagged
+        assert {r["active"] for r in out["mods"] if r["name"] == "Harmony"} == {True}
+        assert all(r["active"] is False for r in out["mods"] if r["source"] == "ludeon")

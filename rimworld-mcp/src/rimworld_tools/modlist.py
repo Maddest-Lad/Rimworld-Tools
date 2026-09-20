@@ -93,6 +93,17 @@ def config_path(settings: Settings) -> Path | None:
     return Path(found.path) / "ModsConfig.xml" if found else None
 
 
+def active_ids(settings: Settings) -> set[str] | None:
+    """Lowercased active packageIds, or None when ModsConfig.xml is unavailable."""
+    p = config_path(settings)
+    if p is None or not p.is_file():
+        return None
+    try:
+        return set(read_mods_config(p).active_ids)
+    except (OSError, ET.ParseError):
+        return None
+
+
 # --- snapshots -----------------------------------------------------------------------------
 
 
@@ -105,7 +116,7 @@ def _snap_dir(settings: Settings) -> Path:
 def snapshot(settings: Settings, note: str = "", cfg: ModsConfig | None = None) -> dict[str, Any]:
     p = config_path(settings)
     if p is None or not p.is_file():
-        return {"error": "ModsConfig.xml not found.", "hint": "Check rimworld_locate()."}
+        return {"error": "ModsConfig.xml not found.", "hint": "Check environment_status()."}
     cfg = cfg or read_mods_config(p)
     snap_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + f"-{uuid4().hex[:8]}"
     payload = {
@@ -171,7 +182,7 @@ def diff(settings: Settings, old_ref: str, new_ref: str) -> dict[str, Any]:
     if old is None or new is None:
         return {
             "error": f"Could not load {'old' if old is None else 'new'} list.",
-            "hint": "Use 'current', 'latest', or an id from modlist_snapshot(list=true).",
+            "hint": "Use 'current', 'latest', or an id from modlist_snapshot(list_only=true).",
             "snapshots": list_snapshots(settings),
         }
     a, b = old[0], new[0]
@@ -218,13 +229,16 @@ def _choose(copies: list[mods.Mod], wants_steam: bool) -> mods.Mod:
     )
 
 
-def prepare(settings: Settings) -> Prepared | dict[str, Any]:
+def prepare(
+    settings: Settings, cfg: ModsConfig | None = None, inv: mods.Inventory | None = None
+) -> Prepared | dict[str, Any]:
+    """Resolve the active list (or a proposed `cfg`) against the inventory and compile rules."""
     p = config_path(settings)
     if p is None or not p.is_file():
-        return {"error": "ModsConfig.xml not found.", "hint": "Check rimworld_locate()."}
+        return {"error": "ModsConfig.xml not found.", "hint": "Check environment_status()."}
     source_bytes = p.read_bytes()
-    cfg = read_mods_config(p)
-    inv = mods.scan(settings)
+    cfg = cfg or read_mods_config(p)
+    inv = inv or mods.scan(settings)
     resolved: dict[str, mods.Mod] = {}
     unresolved: list[str] = []
     duplicate_active: list[str] = []
@@ -256,6 +270,7 @@ def prepare(settings: Settings) -> Prepared | dict[str, Any]:
             name = d.display_name or ctx.name_of(dep, d.pfid) or dep
             issue: dict[str, Any] = {
                 "mod": names[pid],
+                "mod_id": pid,
                 "requires": name,
                 "package_id": dep,
                 "status": "installed_but_inactive" if installed else "not_installed",
@@ -299,6 +314,34 @@ def _cycle_dicts(cycles: list[sorting.Cycle], names: dict[str, str]) -> list[dic
     return out
 
 
+def _write_blocked(tool: str, path: Path, source_bytes: bytes) -> dict[str, Any] | None:
+    """Why a ModsConfig.xml write must not happen right now, or None when it is safe."""
+    if running := processes.running(processes.RIMWORLD_PROCESSES):
+        return {
+            "error": f"Refusing to edit ModsConfig.xml while {', '.join(running)} is running.",
+            "hint": f"Close RimWorld, then run {tool} again.",
+        }
+    if path.read_bytes() != source_bytes:
+        return {
+            "error": "ModsConfig.xml changed while the change was being prepared.",
+            "hint": f"Run {tool} again to analyze the current active list.",
+        }
+    return None
+
+
+def _commit(
+    settings: Settings, path: Path, old: ModsConfig, new: ModsConfig, note: str
+) -> dict[str, Any]:
+    """Snapshot the list as it was, then write; callers have already run `_write_blocked`."""
+    snap = snapshot(settings, note=note, cfg=old)
+    backup = write_mods_config(path, new)
+    return {
+        "written": str(path),
+        "backup": str(backup) if backup else None,
+        "snapshot_before": snap.get("id"),
+    }
+
+
 def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
     prep = prepare(settings)
     if isinstance(prep, dict):
@@ -308,11 +351,9 @@ def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
             "error": "Community load-order rules are unavailable, so the active list was not changed.",
             "hint": "Reconnect and retry, or run the maintenance command `db-sync` first.",
         }
-    if not dry_run and (running := processes.running(processes.RIMWORLD_PROCESSES)):
-        return {
-            "error": f"Refusing to edit ModsConfig.xml while {', '.join(running)} is running.",
-            "hint": "Close RimWorld, then run sort_modlist again.",
-        }
+    # Checked again right before the write; failing early keeps the response small.
+    if not dry_run and (blocked := _write_blocked("sort_modlist", prep.path, prep.source_bytes)):
+        return blocked
     result = sorting.sort(list(prep.resolved), prep.compiled, prep.names)
     out: dict[str, Any] = {
         "dry_run": dry_run,
@@ -354,22 +395,14 @@ def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
 
     # Write: config ids preserve any _steam suffix the original carried.
     suffix_for = {a.removesuffix(_STEAM_SUFFIX).lower(): a for a in prep.cfg.active}
-    if prep.path.read_bytes() != prep.source_bytes:
-        return {
-            **out,
-            "error": "ModsConfig.xml changed while the sort was being prepared.",
-            "hint": "Run sort_modlist again to analyze the current active list.",
-        }
-    snap = snapshot(settings, note="auto: before sort_modlist", cfg=prep.cfg)
+    if blocked := _write_blocked("sort_modlist", prep.path, prep.source_bytes):
+        return {**out, **blocked}
     new_cfg = ModsConfig(
         version=prep.cfg.version,
         active=[suffix_for.get(p, p) for p in result.order] + prep.unresolved,
         known_expansions=prep.cfg.known_expansions,
     )
-    backup = write_mods_config(prep.path, new_cfg)
-    out["written"] = str(prep.path)
-    out["backup"] = str(backup) if backup else None
-    out["snapshot_before"] = snap.get("id")
+    out.update(_commit(settings, prep.path, prep.cfg, new_cfg, "auto: before sort_modlist"))
     return out
 
 
@@ -393,3 +426,181 @@ def diagnose(settings: Settings) -> dict[str, Any]:
             else "Each cycle edge lists its rule sources; remove the wrong one via userRules.json."
         ),
     }
+
+
+# --- enabling and disabling -----------------------------------------------------------------
+
+_CORE = "ludeon.rimworld"
+MAX_CHANGE_ITEMS = 100
+
+
+@dataclass
+class _Request:
+    given: str
+    package_id: str
+    wants_steam: bool
+
+
+def _resolve_requests(
+    ids: list[str], inv: mods.Inventory, ctx: advisories.Context
+) -> tuple[list[_Request], list[dict[str, Any]]]:
+    """PackageIds (any case, optional _steam suffix) or Workshop pfids -> package ids.
+
+    A pfid resolves against installed copies first, then the community Steam DB, so a mod that
+    is active but no longer on disk can still be disabled by its Workshop id.
+    """
+    by_pfid = {m.pfid: m.package_id for m in inv.mods if m.pfid and m.package_id}
+    requests: list[_Request] = []
+    failed: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in ids:
+        text = str(raw).strip()
+        if not text:
+            failed.append({"id": raw, "reason": "Empty id."})
+            continue
+        if text.isdecimal():
+            pid = by_pfid.get(text)
+            if pid is None and ctx.steam is not None and (e := ctx.steam.by_pfid.get(text)):
+                pid = e.package_id
+            if pid is None:
+                failed.append(
+                    {
+                        "id": text,
+                        "reason": "No installed mod or Steam DB entry has this Workshop id.",
+                        "hint": "Pass the packageId instead, or check_mod_updates([pfid]).",
+                    }
+                )
+                continue
+            wants_steam = False
+        else:
+            wants_steam = text.lower().endswith(_STEAM_SUFFIX)
+            pid = text.removesuffix(_STEAM_SUFFIX).lower()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        requests.append(_Request(text, pid, wants_steam))
+    return requests, failed
+
+
+def _config_id(pid: str, copies: list[mods.Mod], wants_steam: bool) -> tuple[str, mods.Mod]:
+    """RimWorld writes the bare lowercased id; `_steam` only disambiguates from a local copy."""
+    chosen = _choose(copies, wants_steam)
+    has_other = any(m.source != "steam" for m in copies)
+    return (pid + _STEAM_SUFFIX if chosen.source == "steam" and has_other else pid), chosen
+
+
+def change_active(
+    settings: Settings, ids: list[str], enable: bool, dry_run: bool = True
+) -> dict[str, Any]:
+    """Append installed mods to the active list, or remove active ones; see `sort_modlist` after."""
+    tool = "modlist_enable" if enable else "modlist_disable"
+    if len(ids) > MAX_CHANGE_ITEMS:
+        return {
+            "error": f"At most {MAX_CHANGE_ITEMS} ids per call.",
+            "hint": "Split the list into batches.",
+        }
+    p = config_path(settings)
+    if p is None or not p.is_file():
+        return {"error": "ModsConfig.xml not found.", "hint": "Check environment_status()."}
+    source_bytes = p.read_bytes()
+    if not dry_run and (blocked := _write_blocked(tool, p, source_bytes)):
+        return blocked
+    cfg = read_mods_config(p)
+    inv = mods.scan(settings)
+    ctx = advisories.Context.load(settings, mods.major_minor(inv.game_version))
+    requests, failed = _resolve_requests(ids, inv, ctx)
+    active_now = set(cfg.active_ids)
+
+    def name_of(pid: str) -> str:
+        copies = inv.by_package_id.get(mods.PackageId(pid), [])
+        return copies[0].name if copies else (ctx.name_of(pid) or pid)
+
+    changed: list[dict[str, Any]] = []
+    unchanged: list[dict[str, Any]] = []
+    new_active = list(cfg.active)
+    if enable:
+        for r in requests:
+            copies = inv.by_package_id.get(mods.PackageId(r.package_id), [])
+            if r.package_id in active_now:
+                unchanged.append({"package_id": r.package_id, "name": name_of(r.package_id)})
+            elif not copies:
+                row: dict[str, Any] = {"id": r.given, "reason": "Not installed."}
+                if pfid := ctx.pfid_of(r.package_id):
+                    row["action"] = {"tool": "workshop_subscribe", "pfids": [pfid]}
+                failed.append(row)
+            else:
+                config_id, chosen = _config_id(r.package_id, copies, r.wants_steam)
+                new_active.append(config_id)
+                active_now.add(r.package_id)
+                changed.append(
+                    {
+                        "package_id": r.package_id,
+                        "name": chosen.name,
+                        "source": chosen.source,
+                        "config_id": config_id,
+                    }
+                )
+    else:
+        for r in requests:
+            if r.package_id == _CORE:
+                failed.append({"id": r.given, "reason": "Core cannot be disabled."})
+            elif r.package_id not in active_now:
+                unchanged.append({"package_id": r.package_id, "name": name_of(r.package_id)})
+            else:
+                # Every entry for the id goes, including _steam variants and accidental duplicates.
+                removed = [
+                    a for a in new_active if a.removesuffix(_STEAM_SUFFIX).lower() == r.package_id
+                ]
+                new_active = [a for a in new_active if a not in removed]
+                active_now.discard(r.package_id)
+                changed.append(
+                    {
+                        "package_id": r.package_id,
+                        "name": name_of(r.package_id),
+                        "config_ids": removed,
+                    }
+                )
+
+    new_cfg = ModsConfig(cfg.version, new_active, cfg.known_expansions)
+    out: dict[str, Any] = {
+        "dry_run": dry_run,
+        "enabled" if enable else "disabled": changed,
+        "already_active" if enable else "already_inactive": unchanged,
+        "failed": failed,
+        "active_count_before": len(cfg.active),
+        "active_count_after": len(new_active),
+    }
+    if notice := ctx.db_notice():
+        out["notice"] = notice
+    if not changed:
+        out["hint"] = "Nothing to change; the active list was not touched."
+        return out
+
+    # Judge the proposed list, but only report what the change itself introduced.
+    touched = {c["package_id"] for c in changed}
+    prep = prepare(settings, cfg=new_cfg, inv=inv)
+    if not isinstance(prep, dict):
+        # Enable: what the new mods still need. Disable: who still needs what was removed.
+        key = "mod_id" if enable else "package_id"
+        out["dependency_issues"] = [i for i in prep.dependency_issues if i[key] in touched]
+        out["incompatible_active_pairs"] = [
+            [prep.names.get(a, a), prep.names.get(b, b)]
+            for a, b in sorting.active_incompatibilities(prep.resolved, prep.compiled)
+            if a in touched or b in touched
+        ]
+    if enable:
+        out["hint"] = (
+            "Enabled mods are appended at the end of the load order; run sort_modlist() next. "
+            "dependency_issues lists requirements the enabled mods still lack."
+        )
+    else:
+        out["hint"] = (
+            "dependency_issues lists still-active mods that required what was disabled; disable "
+            "them too or re-enable the requirement."
+        )
+    if dry_run:
+        return out
+    if blocked := _write_blocked(tool, p, source_bytes):
+        return {**out, **blocked}
+    out.update(_commit(settings, p, cfg, new_cfg, f"auto: before {tool}"))
+    return out

@@ -38,7 +38,8 @@ Start with `environment_status()`, then search or inspect mods before subscribin
 | `resolve_workshop_url`, `collection_expand` | Resolve Workshop links and list collection members |
 | `workshop_subscribe`, `workshop_unsubscribe` | Manage the signed-in account's subscriptions |
 | `check_mod_updates` | Read live subscription, installation and download state |
-| `list_installed_mods` | Inventory local, Steam, Git and official content |
+| `list_installed_mods` | Inventory local, Steam, Git and official content, with active state |
+| `modlist_enable`, `modlist_disable` | Activate or deactivate installed mods in `ModsConfig.xml` |
 | `sort_modlist`, `diagnose_cycles` | Sort the active list or explain rule conflicts and missing dependencies |
 | `modlist_snapshot`, `modlist_diff` | Save active-list snapshots and compare changes |
 
@@ -64,10 +65,15 @@ queries Steam again. Partial failures are not cached.
 not subscribed are reported separately. `installed_at` is Steam's installation timestamp.
 Its state is always live; it takes no cache-refresh argument.
 
-Sorting defaults to a dry run. Writes snapshot the list first, require community load-order rules,
-and refuse to edit `ModsConfig.xml` while RimWorld is running. A dependency cycle prevents writing.
-Local inventory, diagnostics, sorting and snapshots remain usable without Steam, using existing
-community data when offline. Subscribing does not activate a mod in RimWorld's active list.
+`modlist_enable(ids)` and `modlist_disable(ids)` take packageIds or Workshop ids (up to 100) and
+default to a dry run. Enabling appends to the end of the load order and reports requirements the
+new mods still lack; disabling refuses Core, leaves files on disk, and names still-active mods that
+depended on what was removed. Subscribing alone does not activate a mod.
+
+Sorting defaults to a dry run. Every write snapshots the list first and refuses to edit
+`ModsConfig.xml` while RimWorld is running; sorting additionally requires community load-order
+rules, and a dependency cycle prevents writing. Local inventory, diagnostics, sorting, enabling and
+snapshots remain usable without Steam, using existing community data when offline.
 
 Local mod copies remain separate from Steam subscriptions. Select Steam copies in RimWorld and
 review duplicates before removing local copies. No automatic migration or deletion occurs.

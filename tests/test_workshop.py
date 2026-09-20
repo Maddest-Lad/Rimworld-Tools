@@ -40,81 +40,6 @@ def _remote(items: dict[str, dict[str, Any]], failed: list[str] | None = None):
     return fake
 
 
-class TestCheckUpdates:
-    def test_reads_client_acf_from_the_game_library(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        s = _settings(tmp_path)
-        workshop_root = tmp_path / "secondary" / "steamapps" / "workshop"
-        content = workshop_root / "content" / "294100"
-        content.mkdir(parents=True)
-        acf.save(workshop_root / "appworkshop_294100.acf", _acf_with("1", 100, "m1"))
-        monkeypatch.setattr(
-            paths,
-            "discover",
-            lambda _: paths.RimWorldPaths(
-                workshop_dir=paths.Found(str(content), "secondary library")
-            ),
-        )
-        assert workshop.installed_items(s, include_steam_client=True)["1"]["source"] == "steam"
-
-    def test_flags_outdated_only_when_remote_is_newer(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        s = _settings(tmp_path)
-        s.acf_path.parent.mkdir(parents=True)
-        data = _acf_with("1", 100, "m1")
-        acf.root(data)["WorkshopItemsInstalled"]["2"] = {"timeupdated": "500", "manifest": "m2"}
-        acf.save(s.acf_path, data)
-        monkeypatch.setattr(
-            webapi,
-            "file_details",
-            _remote(
-                {
-                    "1": {"title": "Old", "time_updated": 200, "unpublished": False},
-                    "2": {"title": "Fresh", "time_updated": 400, "unpublished": False},
-                }
-            ),
-        )
-        out = workshop.check_updates(s, None, include_steam_client=False)
-        assert out["outdated"] == ["1"]
-        assert "workshop_subscribe" in out["hint"]
-        by = {i["pfid"]: i for i in out["items"]}
-        assert by["2"]["outdated"] is False
-
-    def test_missing_remote_yields_none_not_false(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        s = _settings(tmp_path)
-        s.acf_path.parent.mkdir(parents=True)
-        acf.save(s.acf_path, _acf_with("1", 100, "m1"))
-        monkeypatch.setattr(webapi, "file_details", _remote({}, failed=["1"]))
-        out = workshop.check_updates(s, None, include_steam_client=False)
-        assert out["items"][0]["outdated"] is None
-        assert out["lookup_failed"] == ["1"]
-
-    def test_missing_local_timestamp_is_unknown(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        s = _settings(tmp_path)
-        s.acf_path.parent.mkdir(parents=True)
-        acf.save(s.acf_path, _acf_with("1", 100, "m1"))
-        data = acf.load(s.acf_path)
-        acf.root(data)["WorkshopItemsInstalled"]["1"].pop("timeupdated")
-        acf.save(s.acf_path, data)
-        monkeypatch.setattr(
-            webapi,
-            "file_details",
-            _remote({"1": {"title": "Unknown", "time_updated": 200, "unpublished": False}}),
-        )
-        out = workshop.check_updates(s, None, include_steam_client=False)
-        assert out["items"][0]["outdated"] is None
-
-    def test_nothing_installed(self, tmp_path: Path) -> None:
-        out = workshop.check_updates(_settings(tmp_path), None, include_steam_client=False)
-        assert out["items"] == [] and "hint" in out
-
-
 class TestDelete:
     @pytest.fixture
     def installed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
@@ -182,7 +107,6 @@ class TestGameVersion:
     def test_major_minor_from_install(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.rimworld_tools import paths
 
         monkeypatch.setattr(
             paths, "discover", lambda _s: paths.RimWorldPaths(version="1.6.4871 rev590")
@@ -190,7 +114,6 @@ class TestGameVersion:
         assert workshop.detected_game_version(_settings(tmp_path)) == "1.6"
 
     def test_fallback_when_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.rimworld_tools import paths
 
         monkeypatch.setattr(paths, "discover", lambda _s: paths.RimWorldPaths())
         assert workshop.detected_game_version(_settings(tmp_path)) == "1.6"

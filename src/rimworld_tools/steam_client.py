@@ -285,21 +285,122 @@ class SteamClient:
                 break
         return {"results": items[:limit], "total": total, "failed": failed}
 
+    def subscribed_ids(self) -> list[str]:
+        create = self._ugc(
+            "CreateQueryUserUGCRequest",
+            ct.c_uint64,
+            ct.c_uint32,
+            ct.c_int,
+            ct.c_int,
+            ct.c_int,
+            ct.c_uint32,
+            ct.c_uint32,
+            ct.c_uint32,
+        )
+        ids = []
+        for page in range(1, 201):
+            handle = create(
+                self.ugc,
+                int(self.account) & 0xFFFFFFFF,
+                6,
+                -1,
+                0,
+                RIMWORLD_APP_ID,
+                RIMWORLD_APP_ID,
+                page,
+            )
+            result = self.read_query(handle)
+            for row in result["items"] + result["failed"]:
+                if not row.get("pfid") or row["pfid"] == "0":
+                    raise OSError("Steam returned an incomplete subscription list; retry.")
+                ids.append(row["pfid"])
+            if page * 50 >= result["total"]:
+                return list(dict.fromkeys(ids))
+        raise OSError("Steam subscriptions exceed the supported 10000-item limit.")
+
+    def installation_state(self, pfids: list[str] | None = None) -> dict:
+        subscribed = set(self.subscribed_ids())
+        selected = sorted(subscribed, key=int) if pfids is None else pfids
+        install = self._ugc(
+            "GetItemInstallInfo",
+            ct.c_bool,
+            ct.c_uint64,
+            ct.POINTER(ct.c_uint64),
+            ct.c_void_p,
+            ct.c_uint32,
+            ct.POINTER(ct.c_uint32),
+        )
+        download = self._ugc(
+            "GetItemDownloadInfo",
+            ct.c_bool,
+            ct.c_uint64,
+            ct.POINTER(ct.c_uint64),
+            ct.POINTER(ct.c_uint64),
+        )
+        items = []
+        for pfid in selected:
+            if pfid not in subscribed:
+                items.append({"pfid": pfid, "subscribed": False, "installed": False})
+                continue
+            flags = self.item_state(self.ugc, int(pfid))
+            row = {
+                "pfid": pfid,
+                "subscribed": True,
+                "installed": bool(flags & 4),
+                "needs_update": bool(flags & 8),
+                "downloading": bool(flags & 16),
+                "download_pending": bool(flags & 32),
+                "source": "steam",
+            }
+            if flags & 4:
+                size, timestamp = ct.c_uint64(), ct.c_uint32()
+                folder = ct.create_string_buffer(32768)
+                if install(
+                    self.ugc, int(pfid), ct.byref(size), folder, len(folder), ct.byref(timestamp)
+                ):
+                    row.update(
+                        path=folder.value.decode("utf-8", "replace"),
+                        installed_at=timestamp.value,
+                        size_on_disk=size.value,
+                    )
+                else:
+                    row["installed"] = None
+                    row["notice"] = "Steam install information is not available yet."
+            downloaded, total = ct.c_uint64(), ct.c_uint64()
+            if download(self.ugc, int(pfid), ct.byref(downloaded), ct.byref(total)):
+                row.update(bytes_downloaded=downloaded.value, bytes_total=total.value)
+            items.append(row)
+        return {"items": items}
+
     def change(self, pfids: list[str], subscribe: bool) -> dict:
+        subscribed = set(self.subscribed_ids())
+        satisfied = [p for p in pfids if (p in subscribed) == subscribe]
+        pending = [p for p in pfids if p not in satisfied]
+        failed = []
+        if subscribe and pending:
+            details = self.details(pending)
+            failed.extend(details["failed"])
+            pending = []
+            for item in details["items"]:
+                if item["consumer_app_id"] == RIMWORLD_APP_ID and item["file_type"] == 0:
+                    pending.append(item["pfid"])
+                else:
+                    failed.append(
+                        {"pfid": item["pfid"], "reason": "Not a subscribable RimWorld mod."}
+                    )
+        result = self._change_confirmed(pending, subscribe)
+        result["already_satisfied"] = satisfied
+        result["succeeded"] = satisfied + result["succeeded"]
+        result["failed"] = failed + result["failed"]
+        return result
+
+    def _change_confirmed(self, pfids: list[str], subscribe: bool) -> dict:
         succeeded = []
         failed = []
         pending = {}
         callback = 1313 if subscribe else 1315
         operation = self.subscribe if subscribe else self.unsubscribe
         for pfid in pfids:
-            if not subscribe and not self.item_state(self.ugc, int(pfid)) & 1:
-                failed.append(
-                    {
-                        "pfid": pfid,
-                        "reason": "Steam does not report this item as subscribed for RimWorld.",
-                    }
-                )
-                continue
             handle = operation(self.ugc, int(pfid))
             if handle:
                 pending[handle] = pfid
@@ -353,7 +454,7 @@ def main() -> None:
         json.loads(sys.stdin.read()) if action == "request" else {"action": action, "pfids": pfids}
     )
     action = request["action"]
-    if action not in {"subscribe", "unsubscribe", "probe", "details", "search"}:
+    if action not in {"subscribe", "unsubscribe", "probe", "details", "search", "state"}:
         raise ValueError("Unknown Steam action")
     try:
         with SteamClient(Path(dll)) as client:
@@ -376,6 +477,8 @@ def main() -> None:
                     request["sort"],
                     request["days"],
                 )
+            elif action == "state":
+                result = client.installation_state(request.get("pfids"))
             else:
                 result = client.change(request["pfids"], action == "subscribe")
             result["account"] = client.account

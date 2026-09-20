@@ -34,3 +34,31 @@ def test_ids_and_urls():
     )
     assert parse_url("steamcommunity.com/sharedfiles/filedetails/?id=001") == "1"
     assert parse_url("https://unrelated.example/?id=1") is None
+
+
+def test_subscription_changes_validate_app_and_allow_unavailable_unsubscribe():
+    client = object.__new__(SteamClient)
+    client.subscribed_ids = lambda: ["1", "2"]
+    client.details = lambda _: {
+        "items": [
+            {"pfid": "3", "consumer_app_id": 123, "file_type": 0},
+            {"pfid": "4", "consumer_app_id": 294100, "file_type": 2},
+            {"pfid": "5", "consumer_app_id": 294100, "file_type": 0},
+        ],
+        "failed": [],
+    }
+    dispatched = []
+
+    def change(ids, subscribe):
+        dispatched.append((ids, subscribe))
+        return {"succeeded": ids, "failed": []}
+
+    client._change_confirmed = change
+    result = client.change(["1", "3", "4", "5"], True)
+    assert result["already_satisfied"] == ["1"]
+    assert dispatched == [(["5"], True)]
+    assert len(result["failed"]) == 2
+    client.details = lambda _: pytest.fail("Unsubscribe must not require public item metadata")
+    result = client.change(["2", "6"], False)
+    assert result["already_satisfied"] == ["6"]
+    assert dispatched[-1] == (["2"], False)

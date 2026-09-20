@@ -4,7 +4,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from . import acf, advisories, paths, steamcmd, symlink, webapi, workshop_ids, workshop_queries
+from . import (
+    acf,
+    advisories,
+    paths,
+    steam_transport,
+    steamcmd,
+    symlink,
+    workshop_ids,
+    workshop_queries,
+)
 from . import cache as cache_mod
 from .config import RIMWORLD_APP_ID, Settings
 from .steam_client import SORT_MODES
@@ -66,69 +75,23 @@ def _remote_advisories(
     return [a.to_dict() for a in found if a is not None]
 
 
-def check_updates(
-    settings: Settings,
-    pfids: list[str | int] | None,
-    include_steam_client: bool,
-    refresh: bool = False,
-) -> dict[str, Any]:
-    local = installed_items(settings, include_steam_client)
-    if pfids:
-        good, _ = steamcmd._normalise_pfids(pfids)
-        local = {p: local[p] for p in good if p in local}
-        missing = [p for p in good if p not in local]
-    else:
-        missing = []
-    if not local:
-        return {
-            "items": [],
-            "outdated": [],
-            "not_installed": missing,
-            "hint": "No installed Workshop items recorded. Use workshop_subscribe, then wait for Steam to download them.",
-        }
-    remote = webapi.file_details(list(local), settings.steam_web_api_key, _cache(settings), refresh)
-    ctx = advisories.Context.load(settings, detected_game_version(settings))
-    items: list[dict[str, Any]] = []
-    for pfid, rec in local.items():
-        r = remote.items.get(pfid)
-        row = dict(rec)
-        if r is None:
-            row.update({"title": None, "remote_time_updated": None, "outdated": None})
-        else:
-            rt = r["time_updated"]
-            lt = rec["local_timeupdated"]
-            row.update(
-                {
-                    "title": r["title"],
-                    "remote_time_updated": rt,
-                    "unpublished": r["unpublished"],
-                    "outdated": rt > lt if rt is not None and lt is not None else None,
-                }
-            )
-            if found := _remote_advisories(ctx, pfid, r["unpublished"]):
-                row["advisories"] = found
-        items.append(row)
-    outdated = [i["pfid"] for i in items if i.get("outdated")]
-    out: dict[str, Any] = {
+async def check_updates(settings: Settings, pfids: list[str | int] | None = None) -> dict[str, Any]:
+    good, bad = workshop_ids.normalise(pfids) if pfids is not None else (None, [])
+    result = await steam_transport.request(settings, "state", pfids=good)
+    result.pop("account", None)
+    if "error" in result:
+        return result
+    items = result["items"]
+    return {
         "items": items,
-        "outdated": outdated,
-        "not_installed": missing,
-        "lookup_failed": remote.failed_ids,
-        "errors": remote.errors,
+        "outdated": [r["pfid"] for r in items if r.get("installed") and r.get("needs_update")],
+        "not_installed": [
+            r["pfid"] for r in items if r.get("subscribed") and r.get("installed") is False
+        ],
+        "not_subscribed": [r["pfid"] for r in items if not r["subscribed"]],
+        "failed": [{"pfid": p, "reason": "Invalid Workshop id."} for p in bad],
+        "hint": "Live Steam client state; Steam handles downloads and updates. installed_at is the installation timestamp, not the Workshop publication time.",
     }
-    if summary := remote.cache_summary():
-        out["cache"] = summary
-    steamcmd_outdated = [
-        i["pfid"] for i in items if i.get("outdated") and i["source"] == "steamcmd"
-    ]
-    if steamcmd_outdated:
-        out["hint"] = (
-            f"Legacy SteamCMD copies are outdated: {steamcmd_outdated}. Subscribe with "
-            "workshop_subscribe and select the Steam copies in RimWorld; local copies are not migrated automatically."
-        )
-    elif outdated:
-        out["hint"] = "Outdated items are Steam-subscribed; the Steam client updates those itself."
-    return out
 
 
 async def expand_collection(

@@ -25,7 +25,7 @@ async def environment_status() -> dict[str, Any]:
     Example: environment_status()
     """
     settings = _settings()
-    status = await asyncio.to_thread(subscriptions.status, settings)
+    status = await subscriptions.status(settings)
     status["rimworld"] = (await asyncio.to_thread(paths.discover, settings)).to_dict()
     return status
 
@@ -78,19 +78,13 @@ async def workshop_mod_info(
 
 
 @mcp.tool
-async def check_mod_updates(
-    pfids: list[str | int] | None = None, include_steam_client: bool = True, refresh: bool = False
-) -> dict[str, Any]:
+async def check_mod_updates(pfids: list[str | int] | None = None) -> dict[str, Any]:
     """
-    Compare each installed item's ACF timestamp with the Workshop's. Defaults to everything
-    installed via SteamCMD and (optionally) the Steam client. Returns the outdated pfid list.
-    Workshop data is cached 6h per item; refresh=true forces a live re-check of all of them.
+    Show live Steam subscription, installation and download state for RimWorld mods.
+    Defaults to all subscriptions; outdated lists installed copies that Steam says need updates.
     Example: check_mod_updates()
     """
-    await runtime.get().ensure_community_data()
-    return await asyncio.to_thread(
-        workshop.check_updates, _settings(), pfids, include_steam_client, refresh
-    )
+    return await workshop.check_updates(_settings(), pfids)
 
 
 @mcp.tool

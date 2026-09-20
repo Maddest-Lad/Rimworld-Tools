@@ -135,6 +135,31 @@ def _settings(tmp_path: Path, max_items: int = 50) -> Settings:
     )
 
 
+class TestBatchCleanup:
+    async def test_launch_failure_removes_the_temporary_script(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        settings = _settings(tmp_path)
+        settings.force_install_dir.mkdir(parents=True)
+        settings.steamcmd_dir.mkdir(parents=True)
+        created: list[Path] = []
+        original = steamcmd.write_script
+
+        def write(*args, **kwargs):
+            path = original(*args, **kwargs)
+            created.append(path)
+            return path
+
+        async def fail(*args, **kwargs):
+            raise OSError("launch failed")
+
+        monkeypatch.setattr(steamcmd, "write_script", write)
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fail)
+        with pytest.raises(OSError, match="launch failed"):
+            await steamcmd.run_batch(settings, ["1"], False, 1)
+        assert created and not created[0].exists()
+
+
 class TestDownloadGuards:
     async def test_rejects_non_numeric_only(self, tmp_path: Path) -> None:
         out = await steamcmd.download(_settings(tmp_path), ["abc"])

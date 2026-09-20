@@ -190,25 +190,28 @@ async def run_batch(
     stop = asyncio.Event()
     started = time.monotonic()
     timed_out = False
-
-    proc = await asyncio.create_subprocess_exec(
-        str(settings.steamcmd_exe),
-        "+runscript",
-        str(script),
-        cwd=str(settings.steamcmd_dir),
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    tail = asyncio.create_task(_tail(log, start_offset, parser, stop))
+    proc: asyncio.subprocess.Process | None = None
+    tail: asyncio.Task[None] | None = None
     try:
+        proc = await asyncio.create_subprocess_exec(
+            str(settings.steamcmd_exe),
+            "+runscript",
+            str(script),
+            cwd=str(settings.steamcmd_dir),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        tail = asyncio.create_task(_tail(log, start_offset, parser, stop))
         await asyncio.wait_for(proc.wait(), timeout_s)
     except TimeoutError:
         timed_out = True
-        proc.kill()
-        await proc.wait()
     finally:
+        if proc is not None and proc.returncode is None:
+            proc.kill()
+            await proc.wait()
         stop.set()
-        await tail
+        if tail is not None:
+            await tail
         script.unlink(missing_ok=True)
 
     parser.finish("timed out" if timed_out else "no Success line seen before SteamCMD exited")
@@ -232,8 +235,7 @@ async def warm_up(settings: Settings, timeout_s: float = 600) -> bool:
         stderr=asyncio.subprocess.DEVNULL,
     )
     try:
-        await asyncio.wait_for(proc.wait(), timeout_s)
-        return True
+        return await asyncio.wait_for(proc.wait(), timeout_s) == 0
     except TimeoutError:
         proc.kill()
         await proc.wait()

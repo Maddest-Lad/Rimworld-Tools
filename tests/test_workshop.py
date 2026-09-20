@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from src.rimworld_tools import acf, webapi, workshop
+from src.rimworld_tools import acf, paths, webapi, workshop
 from src.rimworld_tools.config import Settings
 
 
@@ -41,6 +41,23 @@ def _remote(items: dict[str, dict[str, Any]], failed: list[str] | None = None):
 
 
 class TestCheckUpdates:
+    def test_reads_client_acf_from_the_game_library(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        s = _settings(tmp_path)
+        workshop_root = tmp_path / "secondary" / "steamapps" / "workshop"
+        content = workshop_root / "content" / "294100"
+        content.mkdir(parents=True)
+        acf.save(workshop_root / "appworkshop_294100.acf", _acf_with("1", 100, "m1"))
+        monkeypatch.setattr(
+            paths,
+            "discover",
+            lambda _: paths.RimWorldPaths(
+                workshop_dir=paths.Found(str(content), "secondary library")
+            ),
+        )
+        assert workshop.installed_items(s, include_steam_client=True)["1"]["source"] == "steam"
+
     def test_flags_outdated_only_when_remote_is_newer(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

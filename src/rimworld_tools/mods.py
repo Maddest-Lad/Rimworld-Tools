@@ -390,11 +390,9 @@ def scan(settings: Settings) -> Inventory:
 
 def _timestamps(settings: Settings, inv: Inventory) -> dict[str, int | None]:
     out: dict[str, int | None] = {}
-    steam_root = paths.find_steam_root()
-    if steam_root:
-        client = (
-            Path(steam_root.path) / "steamapps" / "workshop" / f"appworkshop_{RIMWORLD_APP_ID}.acf"
-        )
+    found = paths.discover(settings).workshop_dir
+    if found:
+        client = Path(found.path).parent.parent / f"appworkshop_{RIMWORLD_APP_ID}.acf"
         if client.is_file():
             out.update({p: i.timeupdated for p, i in acf.items(acf.load(client)).items()})
     if settings.acf_path.is_file():

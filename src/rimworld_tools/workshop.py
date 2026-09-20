@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 def _steam_client_acf(settings: Settings) -> Path | None:
-    found = paths.discover(settings).steam_root
+    found = paths.discover(settings).workshop_dir
     if not found:
         return None
-    p = Path(found.path) / "steamapps" / "workshop" / f"appworkshop_{RIMWORLD_APP_ID}.acf"
+    p = Path(found.path).parent.parent / f"appworkshop_{RIMWORLD_APP_ID}.acf"
     return p if p.is_file() else None
 
 

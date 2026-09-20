@@ -5,90 +5,110 @@ description: Build, curate and maintain RimWorld modpacks (1.6, Windows/Steam) w
 
 # RimWorld modpack workflow
 
-Every step below is a `rimworld-tools` MCP tool call. The tools talk to the signed-in Steam
-client; there is no web fallback. Folders are reachable through `links/` (see the workspace
-`CLAUDE.md`). Read `reference/frameworks.md` for tier rules and framework prerequisites,
-`reference/checklist.md` before adding any mod, and `reference/about-xml.md` for the
-About.xml / ModsConfig.xml fields that matter.
+Every step is a `rimworld-tools` MCP call (`mcp__rimworld-tools__<name>`). They talk to the
+signed-in Steam client; there is no web fallback. Read `reference/tool-outputs.md` for the exact
+response fields, `reference/checklist.md` before adding any mod, `reference/frameworks.md` for
+tiers and prerequisites, `reference/about-xml.md` for the About.xml / ModsConfig.xml fields.
 
-## 1. Establish the baseline (always)
+## Ground rules
 
-1. `environment_status()` — stop and report if the game is not found or Steam is offline.
-2. `modlist_snapshot(note="before <what you are about to do>")` — makes the whole session
-   reversible with `modlist_diff`.
-3. `list_installed_mods()` — what is on disk (`source`: ludeon | steam | git | local, `version_ok`,
-   advisories). Add `detail=True` only for the mods you are investigating; the compact form is
-   enough for an overview.
-4. `check_mod_updates()` — pending downloads and outdated Steam copies. Resolve these before
-   adding more mods; a half-downloaded mod parses as broken.
+- **Read-only tools are free; call them liberally.** `workshop_subscribe`, `workshop_unsubscribe`
+  and `sort_modlist(dry_run=False)` change the user's real account or list — state the exact
+  pfids/effect and get a yes first.
+- **Subscribed ≠ downloaded ≠ active.** `workshop_subscribe` success means subscribed; Steam
+  downloads later (`check_mod_updates`); the user activates mods in-game. Nothing here writes
+  `activeMods` except the sorter, which only reorders what is already active.
+- **`sort_modlist()` returns the full order (288 entries on a big list).** Never echo it. Report
+  `tiers`, `changed_positions`, `unresolved`, `duplicate_active`, `incompatible_active_pairs`,
+  `dependency_issues`, and only the moves the user asked about.
+- **A native lookup failure is a per-item `failed[].reason`, not proof of unpublishing.** Say what
+  the reason was.
+- Never hand-edit `ModsConfig.xml`, `links/workshop` or `links/steam`.
 
-## 2. Discover candidates
+## 1. Baseline (every session)
 
-| User gives | Call |
-|---|---|
-| A Workshop URL or id | `resolve_workshop_url(url)` → `kind` is `mod` or `collection` |
-| A collection | `collection_expand(url_or_id)` → member pfids (nested collections are filtered) |
-| A theme / name | `workshop_search(query, sort="relevance")`; `sort="trend"` / `"top"` / `"recent"` / `"updated"` for browsing |
-| "What changed recently for X" | `workshop_search(query, sort="updated")` |
+```
+environment_status()                       → ready, account, rimworld.version
+modlist_snapshot(note="before <task>")     → id like 20260920T002230Z; remember it
+list_installed_mods()                      → count, by_source, mods[], mods_with_advisories
+diagnose_cycles()                          → cycles, incompatible_active_pairs, dependency_issues
+```
 
-Search defaults to the installed game version tag and excludes Translation/Scenario items.
-`total` is a ranking estimate, not a match count; if the hit list looks off, say so.
+If `ready` is false, stop and relay the reason. `diagnose_cycles` is the fastest health check:
+each `dependency_issues[]` entry names the mod, the missing `package_id`, a `status`
+(`not_installed` | `installed_but_inactive`) and a ready `action` (`workshop_subscribe` with `pfids`). Present
+those before doing anything else — they are the problems the user already has.
 
-## 3. Vet before subscribing
+Worked example from a real list: `Hospitality: Spa` requires `dubwise.dubsbadhygiene` but the
+user has `dubwise.dubsbadhygiene.lite` active. The fix is a choice (swap Lite for the full mod,
+or drop Spa), not a blind subscribe — ask.
 
-`workshop_mod_info(pfids, include_description=True)` in chunks of ≤50. For each candidate run
-`reference/checklist.md` — the short version:
+## 2. Discover
 
-- Version tag / `version_ok` (the No Version Warning DB already suppresses known false positives;
-  do not second-guess a mod it lists).
-- Advisories: `replaced` → use the fork instead; `blacklisted` → tell the user why and skip;
-  `missing_dependency` → the advisory carries a ready `workshop_subscribe` action.
-- Framework prerequisites (Harmony, HugsLib, Vanilla Expanded Framework, XML Extensions …) —
-  queue those *first*.
-- DLC requirements (`ludeon.rimworld.royalty|ideology|biotech|anomaly|odyssey`) against
-  `list_installed_mods(source="ludeon")`.
-- `incompatibleWith` and duplicate `packageId` against the current active list.
-- A native lookup failure is a per-item reason, **not** proof the mod is unpublished.
+| Input | Call | Read |
+|---|---|---|
+| URL or id | `resolve_workshop_url(url)` | `kind`: mod / collection / other / other_game / unknown; `title` |
+| Collection | `collection_expand(url_or_id)` | `pfids[]` + `items[] {pfid, title}`; nested collections are dropped |
+| Theme / name | `workshop_search(query, limit)` | `results[]`, `filters` (Mod + installed version tag, no Translation/Scenario) |
+| Popular / new | `workshop_search(sort="trend", days=30)` / `"top"` / `"recent"` / `"updated"` | `sort="relevance"` needs a query |
+| Older-version mods | `workshop_search(query, game_version="any")` | only when the user accepts the risk |
+
+`total` (e.g. 1104 for "dubs bad hygiene") is a ranking pool, not a match count. Search is
+capped at 100; page with `limit`. Results are cached 1h — `refresh=True` if the user just
+published or updated something.
+
+## 3. Vet
+
+`workshop_mod_info(pfids)` in chunks of ≤50 (`include_description=True` only when you need the
+text; it's 8 KB max, `description_may_be_truncated` flags the limit). Per item read:
+
+- `tags` — must contain the installed `major.minor` (e.g. `"1.6"`). A mod tagged only `"1.5"`
+  (real case: Titan Vehicles Upgrades, 3484382302) is exactly what later produces
+  `XML error … doesn't correspond to any field` at startup.
+- `time_updated` (epoch) vs `time_created` — stale for years + a `replaced` advisory = abandoned.
+- `advisories[]` — `{kind, severity, message, action?}` with kinds `replaced`, `blacklisted`,
+  `unpublished`, `version_mismatch`, `missing_dependency`. `action` is directly executable.
+- `failed[]` — per-pfid `reason`; report, don't guess.
+- `cache.note` — say when data came from cache if freshness matters.
+
+Then the checklist in `reference/checklist.md` (frameworks first, DLC ownership via
+`list_installed_mods(source="ludeon")`, `incompatible_with` vs the active list, duplicate
+packageIds).
 
 ## 4. Subscribe and wait
 
-1. `workshop_subscribe(pfids)` (≤50 per call). Read `succeeded` / `failed[]` /
-   `already_satisfied`. Success means *subscribed*, not downloaded.
-2. Poll `check_mod_updates(pfids)` until every id is installed and nothing is pending. Do not
-   inventory or sort before this — About.xml may not exist yet.
-3. `list_installed_mods(package_ids=[...], detail=True)` for the new mods: confirm `version_ok`,
-   dependencies and load rules parsed.
-
-Subscribing does **not** activate a mod. Tell the user to enable it in the in-game mod menu (the
-sorted list only covers what is already active). Never hand-edit `ModsConfig.xml`.
+1. Confirm the pfid list with the user, then `workshop_subscribe(pfids)` (≤50). Read
+   `succeeded`, `failed[] {pfid, reason}`, `already_satisfied`.
+2. Poll `check_mod_updates(pfids)` until each item has `installed: true`, `downloading: false`,
+   `download_pending: false`. `not_installed[]` / `not_subscribed[]` / `outdated[]` are the
+   shortcuts. Steam can take minutes for large mods (`bytes_downloaded` / `bytes_total`).
+3. `list_installed_mods(package_ids=[...], detail=True)` — confirm `version_ok`,
+   `supported_versions`, `dependencies[] {package_id, name, pfid}`, `load_after`, `load_before`,
+   `incompatible_with` parsed. `include_invalid=True` shows folders whose About.xml failed.
+4. Tell the user to enable the new mods in the in-game Mods menu, then continue to step 5.
 
 ## 5. Sort
 
-1. `diagnose_cycles()` — cycles (each edge with its rule source `about:<pid>` / `community` /
-   `user`), incompatible active pairs, missing or inactive dependencies. Fix the cause: subscribe
-   the missing dependency, ask the user which of an incompatible pair to drop, or add a
-   `removeLoadAfter` / `removeLoadBefore` entry to `rimworld-mcp/bin/dbs/userRules.json` for a
-   wrong community rule.
-2. `sort_modlist()` (dry run) — review tier 0/1 contents and anything that moved a long way.
-3. `sort_modlist(dry_run=False)` only after the user agrees. It snapshots first, refuses while
-   RimWorld is running, and writes nothing if a cycle remains.
-4. `modlist_diff(old="<snapshot id from step 1>", new="current")` — report added / removed /
-   moved in plain language.
+1. `diagnose_cycles()` again. For a cycle, each edge carries `sources` (`about:<pid>`,
+   `community`, `user`); the fix for a wrong community rule is a `removeLoadAfter` /
+   `removeLoadBefore` entry in `rimworld-mcp/bin/dbs/userRules.json` (see `reference/about-xml.md`),
+   never deleting a mod to break the loop.
+2. `sort_modlist()` (dry run). Summarise: `tiers` counts, `changed_positions`, `unresolved` (ids
+   active in ModsConfig but not on disk — usually a `_steam` entry whose Workshop copy is missing,
+   or an unsubscribed mod; they stay at the end, never dropped), `duplicate_active`.
+3. With the user's go-ahead: `sort_modlist(dry_run=False)`. It snapshots first, refuses while
+   RimWorld is running, returns `snapshot_before`, and writes nothing if `ok` is false.
+4. `modlist_diff(old="<baseline id>", new="current")` → `added`, `removed`, `moved` — that is the
+   change report.
 
-## 6. Maintenance
+## 6. Maintain
 
-- `check_mod_updates()` on request; `outdated` lists installed Steam copies awaiting updates.
-- After any subscribe / unsubscribe, rerun `diagnose_cycles()` and a dry-run sort.
-- `modlist_snapshot(list_only=True)` to offer rollback points; `modlist_diff` between two ids.
-- `workshop_unsubscribe(pfids)` removes the subscription; Steam deletes files after the game
-  exits and local copies in `links/mods` are untouched.
-
-## Hard rules
-
-- Mutations (`workshop_subscribe`, `workshop_unsubscribe`, `sort_modlist(dry_run=False)`) touch
-  the user's real account and list — confirm the exact ids first.
-- Local (`links/mods`) and Steam copies of the same `packageId` coexist; RimWorld's `_steam`
-  suffix in `ModsConfig.xml` marks which one is active. Respect it and never delete either copy.
-- Do not walk `links/workshop` or `links/mods` wholesale — `list_installed_mods` already parsed
-  them. Open a single mod folder only to inspect a specific About.xml or patch.
-- Errors at game start after a change → switch to `/rimworld-log-debug`.
+- `check_mod_updates()` (no args = all subscriptions): `outdated[]` = installed copies Steam
+  says need updating; Steam applies them itself, usually on next launch.
+- After any subscribe/unsubscribe: `diagnose_cycles()` + dry-run sort.
+- `modlist_snapshot(list_only=True)` → `snapshots[] {id, created_at, note, count}` for rollback
+  points; `modlist_diff("<id>", "current")` to see what drifted.
+- `workshop_unsubscribe(pfids)`: Steam deletes the Workshop folder after the game exits; copies
+  in `links/mods` are untouched. A mod that is *also* in `links/mods` keeps working locally.
+- Startup errors after a change → `/rimworld-log-debug` (its parser attributes XML errors to
+  the mod by `[Source:]`; cross-check with `workshop_mod_info` tags).

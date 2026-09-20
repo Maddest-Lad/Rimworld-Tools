@@ -74,9 +74,7 @@ async def workshop_mod_info(
     Example: workshop_mod_info(["2009463077"])
     """
     await runtime.get().ensure_community_data()
-    return await asyncio.to_thread(
-        workshop.mod_info, _settings(), pfids, refresh, include_description
-    )
+    return await workshop.mod_info(_settings(), pfids, refresh, include_description)
 
 
 @mcp.tool
@@ -103,9 +101,7 @@ async def collection_expand(collection_url_or_id: str, refresh: bool = False) ->
     Example: collection_expand("https://steamcommunity.com/sharedfiles/filedetails/?id=2896394545")
     """
     await runtime.get().ensure_community_data()
-    return await asyncio.to_thread(
-        workshop.expand_collection, _settings(), collection_url_or_id, refresh
-    )
+    return await workshop.expand_collection(_settings(), collection_url_or_id, refresh)
 
 
 @mcp.tool
@@ -114,7 +110,7 @@ async def resolve_workshop_url(url: str, refresh: bool = False) -> dict[str, Any
     Turn a pasted Workshop URL or id into {pfid, kind: mod|collection|unpublished}.
     Example: resolve_workshop_url("https://steamcommunity.com/sharedfiles/filedetails/?id=2009463077")
     """
-    return await asyncio.to_thread(workshop.resolve_url, _settings(), url, refresh)
+    return await workshop.resolve_url(_settings(), url, refresh)
 
 
 @mcp.tool

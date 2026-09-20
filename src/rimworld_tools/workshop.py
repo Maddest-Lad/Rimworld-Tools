@@ -6,7 +6,7 @@ from typing import Any
 
 import requests
 
-from . import acf, advisories, paths, steamcmd, symlink, webapi
+from . import acf, advisories, paths, steamcmd, symlink, webapi, workshop_ids, workshop_queries
 from . import cache as cache_mod
 from .config import RIMWORLD_APP_ID, Settings
 
@@ -37,29 +37,27 @@ def _cache(settings: Settings) -> cache_mod.Cache:
     return cache_mod.Cache(settings.cache_dir)
 
 
-def mod_info(
+async def mod_info(
     settings: Settings,
     pfids: list[str | int],
     refresh: bool = False,
     include_description: bool = False,
 ) -> dict[str, Any]:
-    good, bad = steamcmd._normalise_pfids(pfids)
+    good, bad = workshop_ids.normalise(pfids)
     if not good:
-        return {"error": "No valid published file ids given.", "hint": "Pass numeric pfids."}
-    res = webapi.file_details(
-        good, settings.steam_web_api_key, _cache(settings), refresh, include_description
-    )
+        return {
+            "error": "No valid published file ids given.",
+            "hint": "Pass positive numeric pfids.",
+        }
+    result = await workshop_queries.details(settings, good, refresh, include_description)
     ctx = advisories.Context.load(settings, detected_game_version(settings))
-    items = []
-    for item in res.items.values():
-        found = _remote_advisories(ctx, item["pfid"], item["unpublished"])
-        items.append({**item, "advisories": found} if found else item)
-    out: dict[str, Any] = {"items": items, "failed": res.failed_ids + bad, "errors": res.errors}
-    if summary := res.cache_summary():
-        out["cache"] = summary
+    for item in result["items"]:
+        if found := _remote_advisories(ctx, item["pfid"], False):
+            item["advisories"] = found
+    result["failed"].extend({"pfid": p, "reason": "Invalid Workshop id."} for p in bad)
     if notice := ctx.db_notice():
-        out["notice"] = notice
-    return out
+        result["notice"] = notice
+    return result
 
 
 def _remote_advisories(
@@ -134,75 +132,62 @@ def check_updates(
     return out
 
 
-def expand_collection(settings: Settings, url_or_id: str, refresh: bool = False) -> dict[str, Any]:
-    pfid = webapi.parse_workshop_url(url_or_id)
+async def expand_collection(
+    settings: Settings, url_or_id: str, refresh: bool = False
+) -> dict[str, Any]:
+    pfid = workshop_ids.parse_url(url_or_id)
     if not pfid:
         return {
-            "error": f"Could not find an id in {url_or_id!r}.",
-            "hint": "Pass a Workshop URL or numeric id.",
+            "error": "No valid Workshop id found.",
+            "hint": "Pass a Steam Workshop URL or numeric id.",
         }
-    c = _cache(settings)
-    try:
-        children, cached_at = webapi.collection_children(
-            pfid, settings.steam_web_api_key, c, refresh
-        )
-    except (requests.RequestException, ValueError) as exc:
-        return {"error": webapi.redact(str(exc), settings.steam_web_api_key)}
-    if children is None:
-        return {"error": f"{pfid} is not a collection (or is private).", "collection": pfid}
-    details = webapi.file_details(children, settings.steam_web_api_key, c, refresh)
-    out: dict[str, Any] = {
+    parent = await workshop_queries.details(settings, [pfid], refresh, children=True)
+    if not parent["items"]:
+        return parent
+    item = parent["items"][0]
+    if item["file_type"] != 2 or item["consumer_app_id"] != RIMWORLD_APP_ID:
+        return {
+            "error": "This item is not a RimWorld collection.",
+            "hint": "Pass a RimWorld collection id.",
+        }
+    details = await workshop_queries.details(settings, item["children"], refresh)
+    mods = [
+        row
+        for row in details["items"]
+        if row["file_type"] == 0 and row["consumer_app_id"] == RIMWORLD_APP_ID
+    ]
+    result = {
         "collection": pfid,
-        "count": len(children),
-        "pfids": children,
-        "items": [{"pfid": c, "title": details.items.get(c, {}).get("title")} for c in children],
-        "lookup_failed": details.failed_ids,
+        "count": len(mods),
+        "pfids": [row["pfid"] for row in mods],
+        "items": [{"pfid": row["pfid"], "title": row["title"]} for row in mods],
+        "failed": details["failed"],
         "hint": "Subscribe with workshop_subscribe(pfids=<pfids>) in batches of at most 50.",
     }
-    if cached_at is not None:
-        out["cache"] = {
-            "collection_cached_at": cache_mod.iso(cached_at),
-            "note": "membership "
-            + cache_mod.describe(cached_at)
-            + ". Pass refresh=true to refetch.",
-        }
-        if summary := details.cache_summary():
-            out["cache"]["titles"] = summary
-    elif summary := details.cache_summary():
-        out["cache"] = {"titles": summary}
-    return out
+    if "error" in details:
+        result.update({k: details[k] for k in ("error", "hint") if k in details})
+    if "cache" in parent or "cache" in details:
+        result["cache"] = {"membership": parent.get("cache"), "items": details.get("cache")}
+    return result
 
 
-def resolve_url(settings: Settings, url: str, refresh: bool = False) -> dict[str, Any]:
-    pfid = webapi.parse_workshop_url(url)
+async def resolve_url(settings: Settings, url: str, refresh: bool = False) -> dict[str, Any]:
+    pfid = workshop_ids.parse_url(url)
     if not pfid:
-        return {"error": f"No Workshop id found in {url!r}."}
-    c = _cache(settings)
-    try:
-        children, cached_at = webapi.collection_children(
-            pfid, settings.steam_web_api_key, c, refresh
-        )
-    except (requests.RequestException, ValueError):
-        children, cached_at = None, None
-    if children is not None:
-        out: dict[str, Any] = {"pfid": pfid, "kind": "collection", "child_count": len(children)}
-        if cached_at is not None:
-            out["cache"] = {
-                "cached_at": cache_mod.iso(cached_at),
-                "note": cache_mod.describe(cached_at),
-            }
-        return out
-    details = webapi.file_details([pfid], settings.steam_web_api_key, c, refresh)
-    item = details.items.get(pfid)
-    if item is None:
-        return {"pfid": pfid, "kind": "unknown", "hint": "Lookup failed; try again."}
-    if item["unpublished"]:
-        private = webapi.is_private_or_deleted(pfid)
-        out = {"pfid": pfid, "kind": "unpublished", "confirmed_private_or_deleted": private}
-    else:
-        out = {"pfid": pfid, "kind": "mod", "title": item["title"]}
-    if summary := details.cache_summary():
-        out["cache"] = summary
+        return {
+            "error": "No valid Workshop id found.",
+            "hint": "Pass a Steam Workshop URL or numeric id.",
+        }
+    result = await workshop_queries.details(settings, [pfid], refresh)
+    if not result["items"]:
+        return {**result, "pfid": pfid, "kind": "unknown"}
+    item = result["items"][0]
+    kind = {0: "mod", 2: "collection"}.get(item["file_type"], "other")
+    if item["consumer_app_id"] != RIMWORLD_APP_ID:
+        kind = "other_game"
+    out = {"pfid": pfid, "kind": kind, "title": item["title"]}
+    if "cache" in result:
+        out["cache"] = result["cache"]
     return out
 
 

@@ -219,7 +219,16 @@ class TestInventory:
         assert out["by_source"] == {"ludeon": 1, "steam": 1, "local": 2}
         assert out["invalid_folders"] == 1
         rec = next(r for r in out["mods"] if r["name"] == "Harmony" and r["source"] == "steam")
-        assert set(rec) == {"package_id", "name", "source", "pfid", "version_ok"}
+        assert set(rec) == {"package_id", "name", "source", "pfid", "version_ok", "advisories"}
+        # GOOD declares a Prepatcher dependency that this world doesn't have.
+        assert rec["advisories"] == [
+            {
+                "kind": "missing_dependency",
+                "severity": "warn",
+                "message": "Requires 'Prepatcher' (pfid 2934420800), not installed.",
+                "action": {"tool": "workshop_download", "pfids": ["2934420800"]},
+            }
+        ]
         assert rec["pfid"] == "2009463077"
         assert out["duplicates"] == {
             "brrainz.harmony": sorted(out["duplicates"]["brrainz.harmony"])
@@ -230,7 +239,9 @@ class TestInventory:
         out = mods.inventory(world, detail=True)
         old = next(r for r in out["mods"] if r["path"].endswith("Old"))
         assert old["version_ok"] is False
-        assert any("game is 1.6" in w for w in old["warnings"])
+        assert old["advisories"][0]["kind"] == "version_mismatch"
+        assert out["notice"]["kind"] == "databases_missing"  # DBs not synced in this fixture
+        assert out["mods_with_advisories"] >= 1
         core = next(r for r in out["mods"] if r["source"] == "ludeon")
         assert core["version_ok"] is True
 

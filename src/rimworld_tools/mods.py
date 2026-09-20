@@ -9,7 +9,7 @@ from typing import Any, Self
 
 from bs4 import BeautifulSoup
 
-from . import acf, paths
+from . import acf, advisories, paths
 from .config import RIMWORLD_APP_ID, RIMWORLD_APP_IDS, Settings
 
 logger = logging.getLogger(__name__)
@@ -402,7 +402,14 @@ def _timestamps(settings: Settings, inv: Inventory) -> dict[str, int | None]:
     return out
 
 
-def _record(m: Mod, game_mm: str | None, detail: bool, timeupdated: int | None) -> dict[str, Any]:
+def _record(
+    m: Mod,
+    game_mm: str | None,
+    detail: bool,
+    timeupdated: int | None,
+    ctx: advisories.Context,
+    installed: set[str],
+) -> dict[str, Any]:
     a = m.about
     supported = a.supported_versions if a else []
     version_ok: bool | None = None if not supported or not game_mm else game_mm in supported
@@ -414,10 +421,23 @@ def _record(m: Mod, game_mm: str | None, detail: bool, timeupdated: int | None) 
         "version_ok": version_ok,
     }
     warnings = list(m.warnings) + (list(a.warnings) if a else [])
-    if version_ok is False:
-        warnings.append(f"declares {supported}, game is {game_mm}")
     if warnings:
         rec["warnings"] = warnings
+    found = advisories.for_mod(
+        ctx,
+        m.package_id,
+        m.pfid,
+        supported,
+        version_ok,
+        None,
+        [
+            (d.package_id, d.display_name, d.pfid, list(d.alternatives))
+            for d in (a.dependencies if a else [])
+        ],
+        installed,
+    )
+    if found:
+        rec["advisories"] = found
     if detail:
         rec.update(
             {
@@ -460,7 +480,9 @@ def inventory(
     if not include_invalid:
         mods = [m for m in mods if m.about is not None]
 
-    records = [_record(m, game_mm, detail, stamps.get(m.pfid or "")) for m in mods]
+    ctx = advisories.Context.load(settings, game_mm)
+    installed = {m.package_id for m in inv.mods if m.package_id}
+    records = [_record(m, game_mm, detail, stamps.get(m.pfid or ""), ctx, installed) for m in mods]
     duplicates = {
         pid: [str(x.path) for x in ms]
         for pid, ms in inv.by_package_id.items()
@@ -479,6 +501,11 @@ def inventory(
     }
     if duplicates:
         out["duplicates"] = duplicates
+    if notice := ctx.db_notice():
+        out["notice"] = notice
+    flagged = sum(1 for r in records if r.get("advisories"))
+    if flagged:
+        out["mods_with_advisories"] = flagged
     invalid = sum(1 for m in inv.mods if m.about is None)
     if invalid and not include_invalid:
         out["invalid_folders"] = invalid

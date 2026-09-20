@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import acf, mods, paths, steamcmd, workshop
+from . import acf, db, mods, paths, steamcmd, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,17 @@ async def acf_repair(dry_run: bool = True) -> dict[str, Any]:
     return await asyncio.to_thread(
         acf.repair, settings.acf_path, settings.workshop_content_dir, dry_run
     )
+
+
+@mcp.tool
+async def db_sync(sources: list[str] | None = None, force: bool = False) -> dict[str, Any]:
+    """
+    Fetch the community databases (Steam Workshop DB, Community Rules, Use This Instead,
+    No Version Warning) from GitHub. Conditional on ETag, so a re-run is a cheap no-op.
+    These power the per-mod advisories in list_installed_mods / check_mod_updates.
+    Example: db_sync()
+    """
+    return await asyncio.to_thread(db.sync, Settings.from_env(), sources, force)
 
 
 @mcp.tool

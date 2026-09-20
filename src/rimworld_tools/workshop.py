@@ -6,7 +6,7 @@ from typing import Any
 
 import requests
 
-from . import acf, paths, steamcmd, symlink, webapi
+from . import acf, advisories, paths, steamcmd, symlink, webapi
 from .config import RIMWORLD_APP_ID, Settings
 
 logger = logging.getLogger(__name__)
@@ -37,18 +37,22 @@ def mod_info(settings: Settings, pfids: list[str | int]) -> dict[str, Any]:
     if not good:
         return {"error": "No valid published file ids given.", "hint": "Pass numeric pfids."}
     res = webapi.file_details(good, settings.steam_web_api_key)
-    out: dict[str, Any] = {
-        "items": list(res.items.values()),
-        "failed": res.failed_ids + bad,
-        "errors": res.errors,
-    }
-    unpublished = [i["pfid"] for i in res.items.values() if i["unpublished"]]
-    if unpublished:
-        out["hint"] = (
-            f"{len(unpublished)} item(s) are unpublished (deleted/private): {unpublished}. "
-            "Use This Instead may know a maintained fork (db_sync, then check advisories)."
-        )
+    ctx = advisories.Context.load(settings, detected_game_version(settings))
+    items = []
+    for item in res.items.values():
+        found = _remote_advisories(ctx, item["pfid"], item["unpublished"])
+        items.append({**item, "advisories": found} if found else item)
+    out: dict[str, Any] = {"items": items, "failed": res.failed_ids + bad, "errors": res.errors}
+    if notice := ctx.db_notice():
+        out["notice"] = notice
     return out
+
+
+def _remote_advisories(
+    ctx: advisories.Context, pfid: str, unpublished: bool
+) -> list[dict[str, Any]]:
+    found = [ctx.replacement(pfid, unpublished), ctx.blacklist(pfid)]
+    return [a.to_dict() for a in found if a is not None]
 
 
 def check_updates(
@@ -69,6 +73,7 @@ def check_updates(
             "hint": "No installed Workshop items recorded. Run workshop_download or steamcmd_setup.",
         }
     remote = webapi.file_details(list(local), settings.steam_web_api_key)
+    ctx = advisories.Context.load(settings, detected_game_version(settings))
     items: list[dict[str, Any]] = []
     for pfid, rec in local.items():
         r = remote.items.get(pfid)
@@ -86,6 +91,8 @@ def check_updates(
                     "outdated": bool(rt and lt and rt > lt),
                 }
             )
+            if found := _remote_advisories(ctx, pfid, r["unpublished"]):
+                row["advisories"] = found
         items.append(row)
     outdated = [i["pfid"] for i in items if i.get("outdated")]
     out: dict[str, Any] = {

@@ -58,6 +58,7 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | `workshop_download(pfids, validate, clear_depot_cache)` | Download/update mods into Mods. Blocks; batches of 25; per-item results |
 | `clear_depot_cache()` | First remediation for downloads that succeed but write nothing |
 | `acf_repair(dry_run=True)` | Drop ACF entries with no directory on disk. Refuses while steamcmd.exe runs |
+| `db_sync(sources?, force)` | Fetch the community DBs from GitHub (ETag-conditional; re-runs are no-ops) |
 | `list_installed_mods(source?, package_ids?, detail, include_invalid)` | Every mod on disk: packageId, name, source (ludeon\|steam\|steamcmd\|git\|local), pfid, version_ok. Compact by default; `detail` adds paths/deps/load rules |
 | `workshop_mod_info(pfids)` | Title/updated/size/tags/unpublished from the Workshop. Keyless, 300/chunk |
 | `check_mod_updates(pfids?, include_steam_client=True)` | Local ACF timestamp vs Workshop; returns the outdated list |
@@ -117,6 +118,27 @@ file, or SteamCMD will silently refuse to re-download the item.
 - Classification checks `PublishedFileId.txt == folder name` **before** `.git`, because some
   Workshop items ship a stray `.git` directory.
 - Dependencies read `steamWorkshopUrl` (RimSort reads `workshopUrl`, which is a bug; accepted as alias).
+
+### Community databases and advisories (`db.py`, `advisories.py`)
+
+Synced into `bin/dbs/<name>/` from GitHub zips. Branches differ and are a 404 hazard:
+`RimSort/*` are `main`, `emipa606/*` are `master` (sync falls back to the other on 404).
+
+| DB | Trusted for |
+|---|---|
+| Steam Workshop DB (`steamDB.json`, ~48MB, ~58k entries) | packageId↔pfid mapping, display names, `blacklist` comments, dependency names |
+| Community Rules | `loadAfter`/`loadBefore`/`loadTop`/`loadBottom` (Phase 6) |
+| Use This Instead (`replacements.json.gz`, a **list** keyed by `oldWorkshopId`) | "abandoned → maintained fork" |
+| No Version Warning (**versioned subdirs only**, `1.6/ModIdsToFix.xml`; no root file) | suppressing false `version_mismatch` |
+
+**Never trust the Steam DB's `unpublished` flag.** On a real 288-mod set it was wrong 4 times out
+of 4 — it lags republishing. `unpublished` advisories come only from a live Web API result
+(`workshop_mod_info`, `check_mod_updates`); `list_installed_mods` never emits one.
+
+Advisories are `{kind, severity, message, action?}` with kinds `version_mismatch` (suppressed
+outright when No Version Warning lists the mod), `replaced`, `unpublished`, `blacklisted`,
+`missing_dependency` (named via the Steam DB with a ready `workshop_download` action). A missing DB
+produces one top-level `notice` per response, never one per mod, and never an error.
 
 ### SteamCMD constraints worth not rediscovering
 

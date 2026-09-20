@@ -4,11 +4,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from . import acf, advisories, paths, steamcmd, symlink, webapi, workshop_ids, workshop_queries
 from . import cache as cache_mod
 from .config import RIMWORLD_APP_ID, Settings
+from .steam_client import SORT_MODES
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +203,7 @@ def detected_game_version(settings: Settings) -> str:
     return _FALLBACK_GAME_VERSION
 
 
-def search(
+async def search(
     settings: Settings,
     query: str,
     limit: int,
@@ -215,8 +214,8 @@ def search(
     days: int,
     refresh: bool = False,
 ) -> dict[str, Any]:
-    if sort not in webapi.SORT_MODES:
-        return {"error": f"Unknown sort {sort!r}.", "hint": f"One of {sorted(webapi.SORT_MODES)}."}
+    if sort not in SORT_MODES:
+        return {"error": f"Unknown sort {sort!r}.", "hint": f"One of {sorted(SORT_MODES)}."}
     if sort == "relevance" and not query.strip():
         return {"error": "relevance sort needs a query.", "hint": "Use sort='trend' to browse."}
 
@@ -229,28 +228,25 @@ def search(
     if sort == "trend":
         filters["days"] = days
 
-    if not settings.steam_web_api_key:
+    if not 1 <= limit <= 100:
+        return {"error": "limit must be between 1 and 100.", "hint": "Use a smaller query."}
+    if not 1 <= days <= 365:
+        return {"error": "days must be between 1 and 365.", "hint": "Use a supported trend window."}
+    if "\0" in query or len(query.encode("utf-8")) > 4096:
         return {
-            "query": query,
-            "filters": filters,
-            "results": [],
-            "browse_url": webapi.browse_url(query, required, excluded, sort, days),
-            "hint": "No STEAM_WEB_API_KEY set; open browse_url and pass ids to resolve_workshop_url.",
+            "error": "Search text is invalid or too long.",
+            "hint": "Use at most 4096 UTF-8 bytes without NUL characters.",
         }
-    try:
-        out = webapi.search(
-            query,
-            settings.steam_web_api_key,
-            limit,
-            required,
-            excluded,
-            sort,
-            days,
-            _cache(settings),
-            refresh,
-        )
-    except (requests.RequestException, ValueError) as exc:
-        return {"error": webapi.redact(str(exc), settings.steam_web_api_key)}
+    out = await workshop_queries.search(
+        settings,
+        refresh,
+        query=query,
+        limit=limit,
+        required=required,
+        excluded=excluded,
+        sort=sort,
+        days=days,
+    )
     out["filters"] = filters
     # Steam's text search ranks rather than filters: a nonsense query still returns `total`
     # in the tens of thousands. Flag it when no returned title contains any query word.

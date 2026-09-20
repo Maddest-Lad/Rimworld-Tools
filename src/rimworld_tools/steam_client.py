@@ -11,6 +11,7 @@ from .steam_types import QueryCompleted, UGCDetails
 
 RESULT_PREFIX = "RIMWORLD_TOOLS_RESULT:"
 CALL_TIMEOUT = 30
+SORT_MODES = {"relevance": 11, "trend": 3, "recent": 1, "top": 0, "updated": 19}
 
 
 class SubscriptionResult(ct.Structure):
@@ -235,6 +236,55 @@ class SteamClient:
                 failed.extend({"pfid": p, "reason": str(exc)} for p in chunk)
         return {"items": items, "failed": failed}
 
+    def search(
+        self, query: str, limit: int, required: list[str], excluded: list[str], sort: str, days: int
+    ) -> dict:
+        create = self._ugc(
+            "CreateQueryAllUGCRequestPage",
+            ct.c_uint64,
+            ct.c_int,
+            ct.c_int,
+            ct.c_uint32,
+            ct.c_uint32,
+            ct.c_uint32,
+        )
+        search_text = self._ugc("SetSearchText", ct.c_bool, ct.c_uint64, ct.c_char_p)
+        required_tag = self._ugc("AddRequiredTag", ct.c_bool, ct.c_uint64, ct.c_char_p)
+        excluded_tag = self._ugc("AddExcludedTag", ct.c_bool, ct.c_uint64, ct.c_char_p)
+        trend_days = self._ugc("SetRankedByTrendDays", ct.c_bool, ct.c_uint64, ct.c_uint32)
+        items, failed = [], []
+        total = None
+        for page in range(1, (limit + 49) // 50 + 1):
+            handle = create(self.ugc, SORT_MODES[sort], 0, RIMWORLD_APP_ID, RIMWORLD_APP_ID, page)
+            if handle in (0, 2**64 - 1):
+                failed.append({"page": page, "reason": "Steam rejected the search query."})
+                break
+            try:
+                options = [(required_tag, tag.encode("utf-8")) for tag in required]
+                options += [(excluded_tag, tag.encode("utf-8")) for tag in excluded]
+                if query:
+                    options.append((search_text, query.encode("utf-8")))
+                if sort == "trend":
+                    options.append((trend_days, days))
+                for function, value in options:
+                    if not function(self.ugc, handle, value):
+                        raise OSError("Steam rejected a search filter.")
+            except OSError as exc:
+                self.release_query(self.ugc, handle)
+                failed.append({"page": page, "reason": str(exc)})
+                break
+            try:
+                result = self.read_query(handle)
+            except OSError as exc:
+                failed.append({"page": page, "reason": str(exc)})
+                break
+            total = result["total"]
+            items.extend(result["items"])
+            failed.extend({**row, "page": page} for row in result["failed"])
+            if page * 50 >= total:
+                break
+        return {"results": items[:limit], "total": total, "failed": failed}
+
     def change(self, pfids: list[str], subscribe: bool) -> dict:
         succeeded = []
         failed = []
@@ -303,7 +353,7 @@ def main() -> None:
         json.loads(sys.stdin.read()) if action == "request" else {"action": action, "pfids": pfids}
     )
     action = request["action"]
-    if action not in {"subscribe", "unsubscribe", "probe", "details"}:
+    if action not in {"subscribe", "unsubscribe", "probe", "details", "search"}:
         raise ValueError("Unknown Steam action")
     try:
         with SteamClient(Path(dll)) as client:
@@ -316,6 +366,15 @@ def main() -> None:
                     request["pfids"],
                     request.get("description", False),
                     request.get("children", False),
+                )
+            elif action == "search":
+                result = client.search(
+                    request["query"],
+                    request["limit"],
+                    request["required"],
+                    request["excluded"],
+                    request["sort"],
+                    request["days"],
                 )
             else:
                 result = client.change(request["pfids"], action == "subscribe")

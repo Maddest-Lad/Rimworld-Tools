@@ -8,6 +8,25 @@ from . import cache, steam_transport
 from .config import Settings
 
 
+async def search(settings: Settings, refresh: bool, **arguments: Any) -> dict[str, Any]:
+    session = await steam_transport.request(settings, "probe")
+    if "error" in session:
+        return {**session, "results": [], "failed": []}
+    namespace = f"native_v1_{session['account']}_search"
+    key = cache.key_for(arguments)
+    store = cache.Cache(settings.cache_dir)
+    lookup = await asyncio.to_thread(store.lookup, namespace, [key], refresh)
+    if key in lookup.hits:
+        return {**copy.deepcopy(lookup.hits[key]), "cache": lookup.summary(1)}
+    result = await steam_transport.request(
+        settings, "search", account=session["account"], **arguments
+    )
+    result.pop("account", None)
+    if "error" not in result and not result.get("failed"):
+        await asyncio.to_thread(store.store, namespace, {key: result})
+    return result
+
+
 async def details(
     settings: Settings,
     pfids: list[str],

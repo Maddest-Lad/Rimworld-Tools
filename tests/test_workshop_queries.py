@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-from src.rimworld_tools import steam_transport, workshop_queries
+from src.rimworld_tools import steam_transport, workshop, workshop_queries
 from src.rimworld_tools.config import Settings
 
 
@@ -34,3 +34,27 @@ async def test_cache_is_account_and_description_scoped(tmp_path, monkeypatch):
     assert len(calls) == 3
     monkeypatch.setattr(steam_transport, "request", AsyncMock(return_value={"error": "Signed out"}))
     assert (await workshop_queries.details(settings, ["10"]))["items"] == []
+
+
+async def test_search_filters_validation_and_partial_results(tmp_path, monkeypatch):
+    settings = Settings(tmp_path, None, tmp_path / "db", 50, None)
+    remote = AsyncMock(
+        return_value={
+            "results": [{"title": "Harmony"}],
+            "failed": [{"page": 2, "reason": "offline"}],
+            "total": 99,
+        }
+    )
+    monkeypatch.setattr(workshop_queries, "search", remote)
+    result = await workshop.search(settings, "harmony", 80, "1.6", False, False, "relevance", 90)
+    assert result["failed"][0]["page"] == 2
+    assert remote.call_args.kwargs["required"] == ["Mod", "1.6"]
+    assert remote.call_args.kwargs["excluded"] == ["Translation", "Scenario"]
+    assert (
+        "needs a query"
+        in (await workshop.search(settings, "", 20, None, False, False, "relevance", 90))["error"]
+    )
+    assert (
+        "limit"
+        in (await workshop.search(settings, "a", 101, None, False, False, "recent", 90))["error"]
+    )

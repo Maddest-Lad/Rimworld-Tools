@@ -132,8 +132,7 @@ async def workshop_search(
     Example: workshop_search("vanilla expanded framework")
     Example: workshop_search(sort="trend", days=30, limit=10)
     """
-    return await asyncio.to_thread(
-        workshop.search,
+    return await workshop.search(
         _settings(),
         query,
         limit,

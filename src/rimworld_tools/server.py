@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from . import acf, paths, steamcmd, workshop
+from . import acf, mods, paths, steamcmd, workshop
 from .config import Settings
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,24 @@ async def acf_repair(dry_run: bool = True) -> dict[str, Any]:
     settings = Settings.from_env()
     return await asyncio.to_thread(
         acf.repair, settings.acf_path, settings.workshop_content_dir, dry_run
+    )
+
+
+@mcp.tool
+async def list_installed_mods(
+    source: str | None = None,
+    package_ids: list[str] | None = None,
+    detail: bool = False,
+    include_invalid: bool = False,
+) -> dict[str, Any]:
+    """
+    Every mod on disk with packageId, name, source (ludeon|steam|steamcmd|git|local), pfid and
+    version_ok. Compact by default — detail=true adds paths, authors, dependencies and load rules.
+    Filter by source or package_ids to keep the payload small; duplicates are reported separately.
+    Example: list_installed_mods(source="steamcmd", detail=true)
+    """
+    return await asyncio.to_thread(
+        mods.inventory, Settings.from_env(), source, package_ids, detail, include_invalid
     )
 
 

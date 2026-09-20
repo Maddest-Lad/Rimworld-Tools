@@ -58,6 +58,7 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | `workshop_download(pfids, validate, clear_depot_cache)` | Download/update mods into Mods. Blocks; batches of 25; per-item results |
 | `clear_depot_cache()` | First remediation for downloads that succeed but write nothing |
 | `acf_repair(dry_run=True)` | Drop ACF entries with no directory on disk. Refuses while steamcmd.exe runs |
+| `list_installed_mods(source?, package_ids?, detail, include_invalid)` | Every mod on disk: packageId, name, source (ludeon\|steam\|steamcmd\|git\|local), pfid, version_ok. Compact by default; `detail` adds paths/deps/load rules |
 | `workshop_mod_info(pfids)` | Title/updated/size/tags/unpublished from the Workshop. Keyless, 300/chunk |
 | `check_mod_updates(pfids?, include_steam_client=True)` | Local ACF timestamp vs Workshop; returns the outdated list |
 | `collection_expand(url_or_id)` | Mod pfids inside a collection (nested collections filtered) |
@@ -102,6 +103,20 @@ file, or SteamCMD will silently refuse to re-download the item.
 - **No tool emits a warning the community databases can resolve** — resolve it first and return one
   actionable line (see the advisory layer).
 - `from __future__ import annotations` everywhere; modern `X | None`.
+
+### About.xml parsing (`mods.py`)
+
+- `PackageId` is a lowercasing `str` subclass; every rule list and index is case-insensitive.
+- Parse order: strict ElementTree → escape bare `&`/`<` and retry → BeautifulSoup `lxml-xml`. The
+  escape pass exists because lxml's recovery *truncates* at a stray `<`, silently dropping every
+  field after it. Real descriptions contain things like "takes < 10s".
+- `*ByVersion` blocks **replace** the base list when the game's `major.minor` matches (an empty
+  block means "none", not "fall back"); `forceLoadAfter`/`forceLoadBefore` are always appended.
+- `supportedVersions` is normalised to `major.minor` at parse time; `version_ok` compares
+  normalised values. Official DLC About.xml omits `<name>` — `DLC_NAMES` fills it.
+- Classification checks `PublishedFileId.txt == folder name` **before** `.git`, because some
+  Workshop items ship a stray `.git` directory.
+- Dependencies read `steamWorkshopUrl` (RimSort reads `workshopUrl`, which is a bug; accepted as alias).
 
 ### SteamCMD constraints worth not rediscovering
 

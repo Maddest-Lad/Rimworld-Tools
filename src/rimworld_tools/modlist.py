@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from . import advisories, db, mods, paths, sorting
 from .config import Settings
@@ -42,23 +44,47 @@ def read_mods_config(path: Path) -> ModsConfig:
 
 
 def write_mods_config(path: Path, cfg: ModsConfig) -> Path | None:
-    """Writes RimWorld's exact schema; keeps a .backup of the previous file."""
+    """Update known ModsConfig fields atomically while retaining unknown root fields."""
     backup = None
     if path.is_file():
         backup = path.with_suffix(".xml.backup")
         shutil.copy2(path, backup)
-    root = ET.Element("ModsConfigData")
+        root = ET.fromstring(path.read_text(encoding="utf-8-sig"))
+    else:
+        root = ET.Element("ModsConfigData")
+
+    def replace_list(tag: str, values: list[str]) -> None:
+        existing = next((node for node in root if node.tag.lower() == tag.lower()), None)
+        if existing is not None:
+            root.remove(existing)
+        node = ET.Element(tag)
+        for value in values:
+            ET.SubElement(node, "li").text = value
+        root.append(node)
+
+    version = next((node for node in root if node.tag.lower() == "version"), None)
     if cfg.version:
-        ET.SubElement(root, "version").text = cfg.version
-    act = ET.SubElement(root, "activeMods")
-    for a in cfg.active:
-        ET.SubElement(act, "li").text = a
-    known = ET.SubElement(root, "knownExpansions")
-    for k in cfg.known_expansions:
-        ET.SubElement(known, "li").text = k
+        if version is None:
+            version = ET.Element("version")
+            root.insert(0, version)
+        version.text = cfg.version
+    elif version is not None:
+        root.remove(version)
+    replace_list("activeMods", cfg.active)
+    replace_list("knownExpansions", cfg.known_expansions)
     ET.indent(root, space="  ")
     body = '<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(root, encoding="unicode") + "\n"
-    path.write_text(body, encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as tmp:
+        tmp.write(body)
+        temp_path = Path(tmp.name)
+    try:
+        temp_path.replace(path)
+    except OSError:
+        temp_path.unlink(missing_ok=True)
+        raise
     return backup
 
 
@@ -76,12 +102,12 @@ def _snap_dir(settings: Settings) -> Path:
     return d
 
 
-def snapshot(settings: Settings, note: str = "") -> dict[str, Any]:
+def snapshot(settings: Settings, note: str = "", cfg: ModsConfig | None = None) -> dict[str, Any]:
     p = config_path(settings)
     if p is None or not p.is_file():
         return {"error": "ModsConfig.xml not found.", "hint": "Check rimworld_locate()."}
-    cfg = read_mods_config(p)
-    snap_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    cfg = cfg or read_mods_config(p)
+    snap_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + f"-{uuid4().hex[:8]}"
     payload = {
         "id": snap_id,
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -90,7 +116,9 @@ def snapshot(settings: Settings, note: str = "") -> dict[str, Any]:
         "active": cfg.active,
         "known_expansions": cfg.known_expansions,
     }
-    (_snap_dir(settings) / f"{snap_id}.json").write_text(json.dumps(payload, indent=1), "utf-8")
+    snap_path = _snap_dir(settings) / f"{snap_id}.json"
+    with snap_path.open("x", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=1)
     return {"id": snap_id, "count": len(cfg.active), "note": note}
 
 
@@ -122,6 +150,14 @@ def _load_list(settings: Settings, ref: str) -> tuple[list[str], str] | None:
         if not files:
             return None
         ref = files[-1].stem
+    if (
+        not ref
+        or Path(ref).name != ref
+        or any(
+            c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in ref
+        )
+    ):
+        return None
     f = _snap_dir(settings) / f"{ref}.json"
     if not f.is_file():
         return None
@@ -164,6 +200,7 @@ def diff(settings: Settings, old_ref: str, new_ref: str) -> dict[str, Any]:
 class Prepared:
     cfg: ModsConfig
     path: Path
+    source_bytes: bytes
     resolved: dict[str, mods.Mod]  # active id -> chosen installed copy
     unresolved: list[str]
     duplicate_active: list[str]
@@ -185,6 +222,7 @@ def prepare(settings: Settings) -> Prepared | dict[str, Any]:
     p = config_path(settings)
     if p is None or not p.is_file():
         return {"error": "ModsConfig.xml not found.", "hint": "Check rimworld_locate()."}
+    source_bytes = p.read_bytes()
     cfg = read_mods_config(p)
     inv = mods.scan(settings)
     resolved: dict[str, mods.Mod] = {}
@@ -227,7 +265,17 @@ def prepare(settings: Settings) -> Prepared | dict[str, Any]:
                 issue["action"] = {"tool": "workshop_download", "pfids": [pfid]}
             issues.append(issue)
     return Prepared(
-        cfg, p, resolved, unresolved, duplicate_active, abouts, names, compiled, inv, issues
+        cfg,
+        p,
+        source_bytes,
+        resolved,
+        unresolved,
+        duplicate_active,
+        abouts,
+        names,
+        compiled,
+        inv,
+        issues,
     )
 
 
@@ -296,7 +344,13 @@ def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
 
     # Write: config ids preserve any _steam suffix the original carried.
     suffix_for = {a.removesuffix(_STEAM_SUFFIX).lower(): a for a in prep.cfg.active}
-    snap = snapshot(settings, note="auto: before sort_modlist")
+    if prep.path.read_bytes() != prep.source_bytes:
+        return {
+            **out,
+            "error": "ModsConfig.xml changed while the sort was being prepared.",
+            "hint": "Run sort_modlist again to analyze the current active list.",
+        }
+    snap = snapshot(settings, note="auto: before sort_modlist", cfg=prep.cfg)
     new_cfg = ModsConfig(
         version=prep.cfg.version,
         active=[suffix_for.get(p, p) for p in result.order] + prep.unresolved,

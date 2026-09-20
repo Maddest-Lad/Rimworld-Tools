@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,17 @@ class TestModsConfig:
         assert again.active == cfg.active and again.known_expansions == ["ludeon.rimworld.royalty"]
         assert p.read_text(encoding="utf-8").startswith('<?xml version="1.0" encoding="utf-8"?>')
 
+    def test_write_preserves_unknown_root_fields(self, tmp_path: Path) -> None:
+        p = tmp_path / "ModsConfig.xml"
+        p.write_text(
+            "<ModsConfigData><version>1.6</version><customFlag>keep</customFlag>"
+            "<activeMods /><knownExpansions /></ModsConfigData>",
+            encoding="utf-8",
+        )
+        modlist.write_mods_config(p, modlist.ModsConfig("1.6", ["core"], []))
+        root = ET.fromstring(p.read_text())
+        assert root.findtext("customFlag") == "keep"
+
 
 class TestPrepare:
     def test_resolves_duplicates_by_suffix_and_reports_unresolved(self, world: Settings) -> None:
@@ -156,6 +168,20 @@ class TestSortModlist:
     def test_no_op_when_already_sorted(self, world: Settings) -> None:
         out = modlist.sort_modlist(world, dry_run=False)
         assert out["ok"] and out["changed_positions"] == 0 and "written" not in out
+
+    def test_refuses_to_overwrite_a_changed_config(
+        self, world: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        prep = modlist.prepare(world)
+        assert not isinstance(prep, dict)
+        path = prep.path
+        prep.cfg.active = list(reversed(prep.cfg.active))
+        cfg = modlist.read_mods_config(path)
+        modlist.write_mods_config(path, cfg)
+        monkeypatch.setattr(modlist, "prepare", lambda _: prep)
+        out = modlist.sort_modlist(world, dry_run=False)
+        assert "changed while" in out["error"]
+        assert "written" not in out
 
     def test_cycle_writes_nothing_and_names_sources(self, world: Settings) -> None:
         (world.db_dir).mkdir(parents=True, exist_ok=True)
@@ -222,3 +248,13 @@ class TestSnapshotsAndDiff:
     def test_bad_ref_lists_snapshots(self, world: Settings) -> None:
         out = modlist.diff(world, "nope", "current")
         assert "error" in out and "snapshots" in out
+
+    def test_snapshots_do_not_collide_within_one_second(self, world: Settings) -> None:
+        first = modlist.snapshot(world, "one")
+        second = modlist.snapshot(world, "two")
+        assert first["id"] != second["id"]
+        assert len(modlist.list_snapshots(world)) == 2
+
+    def test_snapshot_reference_cannot_escape_its_store(self, world: Settings) -> None:
+        out = modlist.diff(world, "../outside", "current")
+        assert "error" in out

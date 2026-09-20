@@ -161,6 +161,15 @@ class TestCollectionAndSearchCache:
 
 
 class TestCacheStore:
+    def test_instances_share_in_process_state(self, tmp_path: Path) -> None:
+        first = cache.Cache(tmp_path)
+        second = cache.Cache(tmp_path)
+        first.store("file_details", {"1": {"value": "first"}})
+        second.store("file_details", {"2": {"value": "second"}})
+        assert set(first.lookup("file_details", ["1", "2"]).hits) == {"1", "2"}
+        first.clear()
+        assert second.lookup("file_details", ["1", "2"]).misses == ["1", "2"]
+
     def test_clear_and_stats(self, tmp_path: Path) -> None:
         c = cache.Cache(tmp_path)
         c.store("file_details", {"1": {"a": 1}, "2": {"b": 2}})

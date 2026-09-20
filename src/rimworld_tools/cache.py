@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -19,6 +20,22 @@ TTL_FILE_DETAILS = 6 * HOUR
 TTL_UNPUBLISHED = 1 * HOUR  # private mods get republished; re-check sooner
 TTL_COLLECTION = 24 * HOUR
 TTL_SEARCH = 1 * HOUR
+
+
+@dataclass
+class _CacheState:
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    loaded: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+_states_lock = threading.Lock()
+_states: dict[Path, _CacheState] = {}
+
+
+def _state_for(root: Path) -> _CacheState:
+    key = root.resolve()
+    with _states_lock:
+        return _states.setdefault(key, _CacheState())
 
 
 def ttl_for(namespace: str, data: Any) -> int:
@@ -86,25 +103,36 @@ class Cache:
 
     def __init__(self, root: Path) -> None:
         self.root = root
-        self._lock = threading.Lock()
-        self._loaded: dict[str, dict[str, Any]] = {}
+        self._state = _state_for(root)
 
     def _path(self, namespace: str) -> Path:
         return self.root / f"{namespace}.json"
 
     def _load(self, namespace: str) -> dict[str, Any]:
-        if namespace not in self._loaded:
+        if namespace not in self._state.loaded:
             try:
-                self._loaded[namespace] = json.loads(self._path(namespace).read_text("utf-8"))
+                self._state.loaded[namespace] = json.loads(self._path(namespace).read_text("utf-8"))
             except (OSError, ValueError):
-                self._loaded[namespace] = {}
-        return self._loaded[namespace]
+                self._state.loaded[namespace] = {}
+        return self._state.loaded[namespace]
 
     def _save(self, namespace: str) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
-        tmp = self._path(namespace).with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(self._loaded[namespace], separators=(",", ":")), "utf-8")
-        tmp.replace(self._path(namespace))
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=self.root,
+            prefix=f".{namespace}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            json.dump(self._state.loaded[namespace], handle, separators=(",", ":"))
+            temp_path = Path(handle.name)
+        try:
+            temp_path.replace(self._path(namespace))
+        except OSError:
+            temp_path.unlink(missing_ok=True)
+            raise
 
     def lookup(
         self,
@@ -119,7 +147,7 @@ class Cache:
             out.misses = keys
             return out
         now = time.time()
-        with self._lock:
+        with self._state.lock:
             store = self._load(namespace)
             for k in keys:
                 entry = store.get(k)
@@ -139,18 +167,18 @@ class Cache:
         if not items:
             return
         now = time.time()
-        with self._lock:
+        with self._state.lock:
             store = self._load(namespace)
             for k, v in items.items():
                 store[k] = {"at": now, "data": v}
             self._save(namespace)
 
     def clear(self) -> dict[str, Any]:
-        with self._lock:
+        with self._state.lock:
             stats = self.stats()
             for f in self.root.glob("*.json"):
                 f.unlink()
-            self._loaded.clear()
+            self._state.loaded.clear()
         return {"cleared_entries": stats["entries"], "freed_bytes": stats["bytes"]}
 
     def stats(self) -> dict[str, Any]:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.rimworld_tools import runtime, steamcmd
+from src.rimworld_tools import locking, runtime, steamcmd
 from src.rimworld_tools.config import Settings
 
 
@@ -20,6 +20,15 @@ def _settings(tmp_path: Path) -> Settings:
 
 
 class TestRuntime:
+    async def test_mutation_returns_a_busy_result_when_the_file_lock_is_held(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(locking.WindowsFileLock, "acquire", lambda *_: False)
+        active = runtime.Runtime(_settings(tmp_path))
+        async with active.mutation() as blocked:
+            assert blocked is not None
+            assert "still using" in blocked["error"]
+
     async def test_download_preparation_is_serialized(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

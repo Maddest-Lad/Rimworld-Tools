@@ -81,12 +81,16 @@ async def workshop_download(
     validate re-hashes existing files (slow, repairs corrupt installs).
     Example: workshop_download(["2009463077", "1631756268"])
     """
-    prepared = await runtime.get().ensure_download_environment()
-    if prepared is not None:
-        return prepared
-    return await steamcmd.download(
-        _settings(), pfids, validate=validate, clear_cache=clear_depot_cache
-    )
+    active = runtime.get()
+    async with active.mutation() as blocked:
+        if blocked is not None:
+            return blocked
+        prepared = await active.ensure_download_environment()
+        if prepared is not None:
+            return prepared
+        return await steamcmd.download(
+            _settings(), pfids, validate=validate, clear_cache=clear_depot_cache
+        )
 
 
 @mcp.tool
@@ -96,7 +100,11 @@ async def clear_depot_cache() -> dict[str, Any]:
     write nothing, or fail with disk/manifest errors.
     Example: clear_depot_cache()
     """
-    return await asyncio.to_thread(steamcmd.clear_depot_cache, _settings())
+    active = runtime.get()
+    async with active.mutation() as blocked:
+        if blocked is not None:
+            return blocked
+        return await asyncio.to_thread(steamcmd.clear_depot_cache, _settings())
 
 
 @mcp.tool
@@ -107,9 +115,13 @@ async def acf_repair(dry_run: bool = True) -> dict[str, Any]:
     Example: acf_repair(dry_run=False)
     """
     settings = _settings()
-    return await asyncio.to_thread(
-        acf.repair, settings.acf_path, settings.workshop_content_dir, dry_run
-    )
+    active = runtime.get()
+    async with active.mutation() as blocked:
+        if blocked is not None:
+            return blocked
+        return await asyncio.to_thread(
+            acf.repair, settings.acf_path, settings.workshop_content_dir, dry_run
+        )
 
 
 @mcp.tool
@@ -227,7 +239,11 @@ async def workshop_delete(pfids: list[str | int]) -> dict[str, Any]:
     manifest so a later re-download actually downloads. Refuses while steamcmd.exe is running.
     Example: workshop_delete(["2009463077"])
     """
-    return await asyncio.to_thread(workshop.delete, _settings(), pfids)
+    active = runtime.get()
+    async with active.mutation() as blocked:
+        if blocked is not None:
+            return blocked
+        return await asyncio.to_thread(workshop.delete, _settings(), pfids)
 
 
 @mcp.tool

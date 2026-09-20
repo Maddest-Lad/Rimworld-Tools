@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -23,7 +24,9 @@ async def mod_info(
             "hint": "Pass positive numeric pfids.",
         }
     result = await workshop_queries.details(settings, good, refresh, include_description)
-    ctx = advisories.Context.load(settings, detected_game_version(settings))
+    ctx = await asyncio.to_thread(
+        lambda: advisories.Context.load(settings, detected_game_version(settings))
+    )
     for item in result["items"]:
         if found := _remote_advisories(ctx, item["pfid"], False):
             item["advisories"] = found
@@ -147,7 +150,9 @@ async def search(
     if sort == "relevance" and not query.strip():
         return {"error": "relevance sort needs a query.", "hint": "Use sort='trend' to browse."}
 
-    version = game_version or detected_game_version(settings)
+    version = game_version or await asyncio.to_thread(detected_game_version, settings)
+    if "\0" in version:
+        return {"error": "Invalid game version tag.", "hint": "Use a version such as 1.6, or any."}
     required = ["Mod"] + ([version] if version.lower() != "any" else [])
     excluded = ([] if include_translations else ["Translation"]) + (
         [] if include_scenarios else ["Scenario"]
@@ -176,6 +181,7 @@ async def search(
         days=days,
     )
     out["filters"] = filters
+    out["query"] = query
     # Steam's text search ranks rather than filters: a nonsense query still returns `total`
     # in the tens of thousands. Flag it when no returned title contains any query word.
     tokens = [t for t in query.lower().split() if len(t) > 2]

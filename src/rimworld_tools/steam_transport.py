@@ -13,6 +13,38 @@ from .config import REPO_ROOT, RIMWORLD_APP_ID, Settings
 from .steam_client import RESULT_PREFIX
 
 
+def _valid_result(action: str, result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    if isinstance(result.get("error"), str):
+        return True
+    account = result.get("account")
+    if not isinstance(account, str) or not account.isascii() or not account.isdecimal():
+        return False
+    if action == "probe":
+        return result.get("ready") is True
+    if action in {"subscribe", "unsubscribe"}:
+        return (
+            isinstance(result.get("succeeded"), list)
+            and all(isinstance(p, str) and p.isdecimal() for p in result["succeeded"])
+            and isinstance(result.get("failed"), list)
+            and all(isinstance(row, dict) for row in result["failed"])
+        )
+    key = "results" if action == "search" else "items"
+    rows = result.get(key)
+    if not isinstance(rows, list) or not all(
+        isinstance(row, dict) and isinstance(row.get("pfid"), str) for row in rows
+    ):
+        return False
+    if action == "state":
+        return all(isinstance(row.get("subscribed"), bool) and "installed" in row for row in rows)
+    return (
+        all("file_type" in row and "consumer_app_id" in row for row in rows)
+        and isinstance(result.get("failed"), list)
+        and all(isinstance(row, dict) for row in result["failed"])
+    )
+
+
 def native_library(settings: Settings) -> Path | None:
     game = paths.discover(settings).game_dir
     if game is None:
@@ -70,12 +102,7 @@ async def request(settings: Settings, action: str, **arguments: Any) -> dict[str
             if line.startswith(RESULT_PREFIX):
                 try:
                     result = json.loads(line[len(RESULT_PREFIX) :])
-                    if isinstance(result, dict) and (
-                        isinstance(result.get("error"), str)
-                        or (
-                            isinstance(result.get("account"), str) and result["account"].isdecimal()
-                        )
-                    ):
+                    if _valid_result(action, result):
                         return result
                 except ValueError:
                     break

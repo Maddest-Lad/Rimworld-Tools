@@ -5,6 +5,7 @@ import ctypes as ct
 import pytest
 
 from src.rimworld_tools.steam_client import SteamClient, SubscriptionResult
+from src.rimworld_tools.steam_transport import _valid_result
 from src.rimworld_tools.steam_types import QueryCompleted, UGCDetails
 from src.rimworld_tools.workshop_ids import normalise, parse_url
 
@@ -25,6 +26,76 @@ def test_query_released_on_option_failure():
     with pytest.raises(OSError):
         client.read_query(42)
     assert released == [42]
+
+
+def test_query_released_on_callback_failure():
+    client = object.__new__(SteamClient)
+    client.ugc = 1
+    client.long_description = client.return_children = client.cached_response = lambda *_: True
+    client.send_query = lambda *_: 5
+    released = []
+    client.release_query = lambda _, handle: released.append(handle)
+
+    def fail(*_):
+        raise OSError("Disconnected")
+
+    client.wait_result = fail
+    with pytest.raises(OSError, match="Disconnected"):
+        client.read_query(42)
+    assert released == [42]
+
+
+def test_details_keep_successful_chunks():
+    client = object.__new__(SteamClient)
+    client.ugc = 1
+    calls = []
+    client.create_details = lambda _, ids, count: calls.append(list(ids)) or len(calls)
+
+    def query(handle, *_):
+        if handle == 2:
+            raise OSError("Disconnected")
+        return {"items": [{"pfid": str(p)} for p in calls[-1]], "failed": []}
+
+    client.read_query = query
+    result = client.details([str(i) for i in range(1, 52)])
+    assert len(result["items"]) == 50
+    assert result["failed"] == [{"pfid": "51", "reason": "Disconnected"}]
+
+
+def test_search_keeps_successful_page_and_native_sort_mapping():
+    client = object.__new__(SteamClient)
+    client.ugc = 1
+    seen = []
+
+    def bind(name, *_):
+        if name == "CreateQueryAllUGCRequestPage":
+
+            def create(*args):
+                seen.append(args)
+                return args[-1]
+
+            return create
+        return lambda *_: True
+
+    client._ugc = bind
+
+    def query(handle):
+        if handle == 2:
+            raise OSError("Disconnected")
+        return {"items": [{"pfid": str(i)} for i in range(1, 51)], "total": 90, "failed": []}
+
+    client.read_query = query
+    result = client.search("", 70, ["Mod"], [], "updated", 90)
+    assert seen[0][1] == 19
+    assert len(result["results"]) == 50
+    assert result["failed"] == [{"page": 2, "reason": "Disconnected"}]
+
+
+def test_helper_protocol_rejects_incomplete_results():
+    assert not _valid_result("details", {"account": "1"})
+    assert not _valid_result("probe", {"account": "1"})
+    assert not _valid_result("subscribe", {"account": "1", "succeeded": "1", "failed": []})
+    assert _valid_result("probe", {"account": "1", "ready": True})
 
 
 def test_ids_and_urls():

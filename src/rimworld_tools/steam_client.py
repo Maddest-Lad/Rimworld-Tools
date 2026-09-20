@@ -449,10 +449,8 @@ class SteamClient:
 
 def main() -> None:
     """Run native code in a short-lived process so its output cannot corrupt MCP stdio."""
-    dll, action, *pfids = sys.argv[1:]
-    request = (
-        json.loads(sys.stdin.read()) if action == "request" else {"action": action, "pfids": pfids}
-    )
+    dll, _ = sys.argv[1:]
+    request = json.loads(sys.stdin.read())
     action = request["action"]
     if action not in {"subscribe", "unsubscribe", "probe", "details", "search", "state"}:
         raise ValueError("Unknown Steam action")

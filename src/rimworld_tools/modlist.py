@@ -166,6 +166,7 @@ class Prepared:
     path: Path
     resolved: dict[str, mods.Mod]  # active id -> chosen installed copy
     unresolved: list[str]
+    duplicate_active: list[str]
     abouts: dict[str, mods.AboutXml]
     names: dict[str, str]
     compiled: sorting.Compiled
@@ -186,20 +187,21 @@ def prepare(settings: Settings) -> Prepared | dict[str, Any]:
         return {"error": "ModsConfig.xml not found.", "hint": "Check rimworld_locate()."}
     cfg = read_mods_config(p)
     inv = mods.scan(settings)
-    abouts: dict[str, mods.AboutXml] = {}
-    for pid, ms in inv.by_package_id.items():
-        first = next((m.about for m in ms if m.about), None)
-        if first:
-            abouts[pid] = first
     resolved: dict[str, mods.Mod] = {}
     unresolved: list[str] = []
+    duplicate_active: list[str] = []
     for raw in cfg.active:
         pid = raw.removesuffix(_STEAM_SUFFIX).lower()
+        if pid in resolved:
+            duplicate_active.append(raw)
+            continue
         copies = inv.by_package_id.get(mods.PackageId(pid), [])
         if copies:
             resolved[pid] = _choose(copies, raw.lower().endswith(_STEAM_SUFFIX))
         else:
             unresolved.append(raw)
+    # Rules must describe the copy RimWorld will load, rather than whichever copy was scanned first.
+    abouts = {pid: m.about for pid, m in resolved.items() if m.about is not None}
     names = {pid: m.name for pid, m in resolved.items()}
     compiled = sorting.compile_rules(abouts, db.community_rules(settings), db.user_rules(settings))
 
@@ -224,7 +226,9 @@ def prepare(settings: Settings) -> Prepared | dict[str, Any]:
             if not installed and pfid:
                 issue["action"] = {"tool": "workshop_download", "pfids": [pfid]}
             issues.append(issue)
-    return Prepared(cfg, p, resolved, unresolved, abouts, names, compiled, inv, issues)
+    return Prepared(
+        cfg, p, resolved, unresolved, duplicate_active, abouts, names, compiled, inv, issues
+    )
 
 
 def _cycle_dicts(cycles: list[sorting.Cycle], names: dict[str, str]) -> list[dict[str, Any]]:
@@ -256,6 +260,7 @@ def sort_modlist(settings: Settings, dry_run: bool = True) -> dict[str, Any]:
         "dry_run": dry_run,
         "active_count": len(prep.cfg.active),
         "unresolved": prep.unresolved,
+        "duplicate_active": prep.duplicate_active,
         "incompatible_active_pairs": [
             [prep.names.get(a, a), prep.names.get(b, b)]
             for a, b in sorting.active_incompatibilities(prep.resolved, prep.compiled)

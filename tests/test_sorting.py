@@ -130,6 +130,12 @@ class TestSort:
             == sorting.sort(list(reversed(active)), c, names(w)).order
         )
 
+    def test_equal_display_names_use_package_id_as_a_tiebreaker(self) -> None:
+        w = world(about("z.same"), about("a.same"))
+        same_names = {"z.same": "Same", "a.same": "Same"}
+        c = sorting.compile_rules(w, None, None)
+        assert sorting.sort(["z.same", "a.same"], c, same_names).order == ["a.same", "z.same"]
+
     def test_inactive_cycle_does_not_surface(self) -> None:
         w = world(about("a.x", after=["b.y"]), about("b.y", after=["a.x"]), about("c.z"))
         c = sorting.compile_rules(w, None, None)

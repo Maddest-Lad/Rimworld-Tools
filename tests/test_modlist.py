@@ -46,7 +46,7 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
         (root / folder / "About" / "About.xml").write_text(about_xml(pid, extra), "utf-8")
 
     mk(data, "Core", "Ludeon.RimWorld")
-    mk(modsd, "DupLocal", "author.dup")
+    mk(modsd, "DupLocal", "author.dup", "<loadAfter><li>author.local</li></loadAfter>")
     mk(ws, "111", "author.dup")
     mk(modsd, "Local", "author.local", "<loadAfter><li>author.dup</li></loadAfter>")
     monkeypatch.setattr(
@@ -104,6 +104,21 @@ class TestPrepare:
         )  # _steam suffix picked the Workshop copy
         assert prep.unresolved == ["ghost.notinstalled"]
         assert prep.names["ludeon.rimworld"] == "Ludeon.RimWorld"
+
+    def test_rules_come_from_the_selected_copy(self, world: Settings) -> None:
+        out = modlist.sort_modlist(world)
+        assert out["ok"]
+        ids = [item["package_id"] for item in out["order"]]
+        assert ids.index("author.dup") < ids.index("author.local")
+
+    def test_duplicate_active_ids_are_reported(self, world: Settings) -> None:
+        path = modlist.config_path(world)
+        assert path is not None
+        cfg = modlist.read_mods_config(path)
+        cfg.active.append("AUTHOR.LOCAL")
+        modlist.write_mods_config(path, cfg)
+        out = modlist.sort_modlist(world)
+        assert out["duplicate_active"] == ["AUTHOR.LOCAL"]
 
 
 class TestSortModlist:

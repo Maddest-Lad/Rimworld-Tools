@@ -163,8 +163,8 @@ def sort(active: list[str], compiled: Compiled, names: Mapping[str, str]) -> Sor
     t2 = active_set - t0 - t1 - t3
     tiers = {"tier0": t0, "tier1": t1, "tier2": t2, "tier3": t3}
 
-    def name_key(p: str) -> str:
-        return (names.get(p) or p).lower()
+    def name_key(p: str) -> tuple[str, str]:
+        return ((names.get(p) or p).lower(), p)
 
     order: list[str] = []
     tier_lists: dict[str, list[str]] = {}

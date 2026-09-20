@@ -109,10 +109,15 @@ class TestDelete:
         assert (installed.depotcache_dir / "294100_other.manifest").exists()
         assert Path(out["acf_backup"]).is_file()
 
-    def test_unknown_pfid_is_a_noop_entry(self, installed: Settings) -> None:
+    def test_unknown_pfid_is_not_treated_as_managed(self, installed: Settings) -> None:
+        unmanaged = installed.mods_dir / "999"
+        unmanaged.mkdir()
         out = workshop.delete(installed, ["999"])
-        assert out["deleted"][0]["dir_removed"] is False
-        assert out["deleted"][0]["acf_removed"] is False
+        assert out["deleted"] == []
+        assert out["skipped"] == [
+            {"pfid": "999", "reason": "not managed by SteamCMD (no ACF entry)"}
+        ]
+        assert unmanaged.exists()
 
     def test_refuses_while_steamcmd_runs(
         self, installed: Settings, monkeypatch: pytest.MonkeyPatch
@@ -131,6 +136,9 @@ class TestDelete:
         elsewhere.mkdir()
         (elsewhere / "keep.txt").write_text("", encoding="utf-8")
         symlink.ensure_junction(installed.mods_dir / "222", elsewhere)
+        data = acf.load(installed.acf_path)
+        acf.root(data)["WorkshopItemsInstalled"]["222"] = {"manifest": "m222"}
+        acf.save(installed.acf_path, data)
         out = workshop.delete(installed, ["222"])
         assert out["deleted"][0]["dir_removed"] is False
         assert (elsewhere / "keep.txt").exists()

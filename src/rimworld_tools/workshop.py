@@ -298,7 +298,12 @@ def delete(settings: Settings, pfids: list[str | int]) -> dict[str, Any]:
     data = acf.load(settings.acf_path)
     deleted: list[dict[str, Any]] = []
     failed: list[dict[str, str]] = [{"pfid": b, "reason": "not numeric"} for b in bad]
+    skipped: list[dict[str, str]] = []
+    managed = acf.items(data)
     for pfid in good:
+        if pfid not in managed:
+            skipped.append({"pfid": pfid, "reason": "not managed by SteamCMD (no ACF entry)"})
+            continue
         target = mods_dir / pfid
         entry: dict[str, Any] = {"pfid": pfid, "dir_removed": False}
         if target.is_dir() and symlink.read_junction(target) is None:
@@ -315,5 +320,10 @@ def delete(settings: Settings, pfids: list[str | int]) -> dict[str, Any]:
 
     if deleted:
         backup = acf.save(settings.acf_path, data)
-        return {"deleted": deleted, "failed": failed, "acf_backup": str(backup) if backup else None}
-    return {"deleted": [], "failed": failed}
+        return {
+            "deleted": deleted,
+            "failed": failed,
+            "skipped": skipped,
+            "acf_backup": str(backup) if backup else None,
+        }
+    return {"deleted": [], "failed": failed, "skipped": skipped}

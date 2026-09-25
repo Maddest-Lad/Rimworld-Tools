@@ -81,41 +81,61 @@ before drawing for it — `vanilla_tex.py --extract '<regex>'`, then
 ## When the reference is not vanilla
 
 These rules describe Ludeon's art. A mod or texture pack the user picked wins where they
-differ — e.g. Medieval Overhaul draws 128 px/cell with a 2.5-unit black outline and uses black
-zigzag marks on straw; Gerrymon's Upscaled Vanilla Textures draws straw as layered tufts with no
-marks. Measure the chosen set (`build_mod_refs.py`, `analyze.py --summary`) and record it in the
-mod's `Art/STYLE.md`; mixing numbers from two references is the most common cause of a full
-redo.
+differ (outline weight, px per cell, how a material is marked). Measure the chosen set
+(`build_mod_refs.py`, `analyze.py --summary`) and record it in the mod's `Art/STYLE.md`;
+mixing numbers from two references is the most common cause of a full redo.
+
+## Where decisions live
+
+This file holds what is true of RimWorld art in general. Everything decided *for a mod* goes
+in that mod's `workspace/<Mod>/Art/STYLE.md` (template: `templates/STYLE.md`): the chosen
+references, px per cell, palette hexes, how each recurring material is drawn, and the list of
+things this user rejected. Read it before drawing; add to it in the same turn the user corrects
+something. Only lift a rule back into this file when it would hold for any mod.
 
 ## Containers, piles and fill levels
 
-Measured on vanilla shelves, hopper, MO open crates/barrels and ASF storage:
+Measured on vanilla shelves and hopper, and on open crates/barrels from storage mods:
 
-- **Open containers read by value, not lines**: a dark interior (MO: #949494 → #626262 before
-  tint) under a light rim, a soft shadow band under the back rim, a slatted or planked front
-  face one step darker than the top. (Vanilla shelves invert this — light interior, dark front
-  band — only because items cover them; users judged the dark interior as "depth".)
+- **Open containers read by value, not lines**: a dark interior (roughly 58 % → 38 % grey
+  before tint) under a light rim, a soft shadow band under the back rim, a slatted or planked
+  front face one step darker than the top. (Vanilla shelves invert this — light interior, dark
+  front band — only because items cover them.)
 - **Fill levels**: the pile covers the whole floor of the container at every level; a lower level
   shows more inner wall, a higher level less. Contents never rise above the rim or spill over.
-  Full ≈ surface just below the rim.
+  Full ≈ surface just below the rim. Low levels lie flat on the floor, not standing up.
 - **Piles**: 3 passes — a dark bed filling the area, mid-tone pieces with random size, rotation
   and squash (not a grid, not one repeated shape), then ~25 % lighter pieces and small highlights
   on top. Darker and sparser at the back rim. Separate pieces with darker shades of the pile's
   own colour, not black outlines.
-- **Related pieces share profile numbers**: gate posts = fence posts, end caps = body rim, a
-  large variant = the small one scaled, not redrawn. Keep them as named constants in the
-  generator.
 
-## What users rejected (Barn Expanded, 2026-09)
+## Consistency across a set
 
-Check a piece against this list before showing it:
+- **One material, one drawing.** A material that appears in several pieces (straw in a bed, a
+  floor, a container fill; the same wood on a door and a stall) is drawn by one shared
+  generator module (`svg-craft.md` → Generated SVG), not re-invented per piece. Record the
+  material recipe in STYLE.md.
+- **Related pieces share profile numbers**: gate posts = fence posts, end caps = body rim, door
+  supports = stall posts, a large variant = the small one scaled, not redrawn. Keep them as
+  named constants in the generator.
+- **Different things must stay different.** Two own-colour items that can lie next to each
+  other (an item and a container fill, two resources) need different silhouettes *and* value
+  or hue at the starting zoom. Check with `sheet.py … --zoom 30`.
+- **Random variants must be visibly different at the starting zoom**, mostly in silhouette;
+  otherwise ship one texture.
 
-- Hairline details: wood-grain lines, nails, tiny leg nubs — invisible in game, noisy up close.
-- Inverted depth: light basin with dark rims, or no shadow inside an open container.
-- Contents that fill from one side (side view) instead of the top-down "surface lowers" cue, and
-  any overflow past the rim.
-- Regular grids of identical pieces (a honeycomb of round pellets, bales in a perfect grid).
-- One mark repeated as a stamp (the same zigzag/tick everywhere) — the eye finds the tiling.
+## Common rejections
+
+Generic failure modes seen in user feedback; check every piece against these and against the
+mod's own "Rejected" list in STYLE.md before showing it:
+
+- Hairline details (wood grain lines, nails, strands 1–2 px wide, tiny nubs) — invisible in game,
+  noise up close.
+- Inverted depth: a light basin under dark rims, or no shadow inside an open container.
+- Contents filling from one side (side view) instead of a top-down surface that lowers; any
+  overflow past a rim.
+- Regular grids of identical pieces, or one mark repeated as a stamp — the eye finds the tiling.
 - Black outlines on every small piece of contents — a black lattice at game zoom.
-- Related pieces drawn at different heights or thicknesses (gate vs fence, cap vs body).
+- Organic contents standing upright in a container (reads as grass or flames).
+- Related pieces drawn at different heights or thicknesses.
 - Anything more saturated or cleaner than the reference set next to it.

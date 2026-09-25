@@ -14,6 +14,10 @@ use. Run from the repo root; `A=.claude/skills/rimworld-svg-art/scripts`.
 - **Pin the style reference before drawing** (step 1). "Vanilla" is not one thing: the user may
   run texture-replacement mods, or want another mod's look. Everything later is measured against
   that reference, and the reference beats the generic rules in `reference/style.md`.
+- **Decisions live with the mod, not in this skill.** Chosen references, palettes, material
+  recipes and what this user rejected go in `workspace/<Mod>/Art/STYLE.md`. Read it first;
+  update it in the same turn the user corrects something. The skill only holds rules that are
+  true of RimWorld art in general.
 - **Show one piece before building a set.** Get the user's OK on one sprite (one rotation, one
   fill level) in a preview, then generate the variants. Most rework comes from set-wide choices
   (depth cue, pattern, proportions) the user would have rejected on the first piece.
@@ -35,11 +39,10 @@ use. Run from the repo root; `A=.claude/skills/rimworld-svg-art/scripts`.
    - Vanilla: `assets/INDEX.md` (sheets for 31 categories) + `assets/stats.md` (numbers). If
      missing: `make art-refs` (~30 s). A mod: `uv run $A/build_mod_refs.py --name … --mod <pfid>
      --regex …` → `assets/mods/INDEX.md` (+ stats).
-   - Write a short **style profile** into `workspace/<Mod>/Art/STYLE.md`: reference sets, px per
-     cell, outline (units per cell, colour, where it is and is not used — silhouettes only, or
-     also on contents/marks), palette hexes for recurring materials, how depth is shown, how
-     texture marks look. Fill it from the sheets and `analyze.py --summary`; confirm it with the
-     user. Every later piece follows it; update it when the user corrects something.
+   - Copy `templates/STYLE.md` to `workspace/<Mod>/Art/STYLE.md` (if the mod has none) and fill
+     it from the sheets and `analyze.py --summary`: references, px per cell, outline, one recipe
+     per recurring material, depth cue, and an (initially empty) Rejected list. Confirm it with
+     the user. Every later piece follows it.
 2. **Spec from the def.** `graphicClass`, `drawSize`, `shaderType`, stuff-tinted or own colour,
    parts that keep a fixed colour (mask), fill layers, linked/door/terrain behaviour. Engine
    rules: `reference/geometry.md`. Canvas and outline: the profile, else `reference/style.md`.
@@ -49,8 +52,11 @@ use. Run from the repo root; `A=.claude/skills/rimworld-svg-art/scripts`.
    (`analyze.py --against <reference> --ppc <yours> --ref-ppc <theirs>`). Show the user.
 4. **The set.** Variants, rotations, fill levels, tiling pieces: write a generator script that
    emits the SVGs (`svg-craft.md` → Generated SVG) so shared profile numbers (post size, rim
-   height, straw palette) stay identical across pieces. Render all, `compose.py` the scenes.
-5. **Check against the rejection list** in `style.md` ("What users rejected") before showing.
+   height) stay identical across pieces, and every recurring material comes from one shared
+   module (`style.md` → Consistency across a set). Render all, `compose.py` the scenes.
+5. **Review the set.** `sheet.py` over every texture at `--zoom native,30`: is each material
+   drawn the same way everywhere, are different things distinguishable, are variants visibly
+   different? Then check `style.md` → Common rejections and the mod's Rejected list.
 6. **Wire up and test in game** (`/rimworld-mod-dev` → `reference/assets.md`): every rotation,
    every stuff, zoomed in and out, fill levels, linked neighbours.
 
@@ -67,6 +73,7 @@ use. Run from the repo root; `A=.claude/skills/rimworld-svg-art/scripts`.
 | SVG → PNG + lint | `render.py X.svg [--size 128 \| 256x128] [--out DIR] [--allow edge,outline]` |
 | One-sprite preview | `render.py … --preview [FILE] --draw-size 2,1 --tint steel,wood --bg soil --ref REGEX [--ref-draw-size auto] [--tint-refs] [--screen 1080]` |
 | Multi-texture scene | `compose.py scene.json` (layers, `linked` atlases, doors, vanilla neighbours; see its docstring) |
+| Whole set side by side | `sheet.py 'Textures/<Mod>/**/*.png' --out Art/review/set.png --tex-ppc 128 --zoom native,30 [--tint wood --tinted REGEX]` |
 
 Lint codes and intent: `[pow2]` (vanilla ships some non-power-of-two sizes), `[edge]`
 (tileable/linked/seamless pieces touch edges on purpose), `[outline]` (fill overlays sit inside
@@ -89,10 +96,11 @@ write helper scripts to files. `/tmp` in bash is not visible to Windows Python; 
 | `crate_{north,east,south}.svg` + `…m.svg` | 1×1 `Graphic_Multi` in cell units, front face at the bottom in every rotation, masks |
 | `plant.svg` | no black outline (darker own-hue edge), mirrored drooping leaves, `feTurbulence` grain |
 | `icon_gene.svg` | 128 px UI icon: bold 5 px outline, 2–3 flat colours, ~10 % margin |
+| `STYLE.md` | the per-mod style profile: references, scale, materials, depth, Rejected list |
 
 ## References
 
-- `reference/style.md` — measured vanilla look, per-category spec, containers & fills, what users rejected
+- `reference/style.md` — measured vanilla look, per-category spec, containers & fills, set consistency, common rejections
 - `reference/geometry.md` — engine layout: drawSize swap, Multi fallbacks, linked atlas, doors, storage layers, terrain scale
 - `reference/svg-craft.md` — SVG technique: outline underlay, clipped shading, grain, masks, generated SVG, tiling, seamless floors
 - `reference/technical.md` — PNG loading (mipmaps, DXT, power of two, bleed), px per cell vs zoom, shaders

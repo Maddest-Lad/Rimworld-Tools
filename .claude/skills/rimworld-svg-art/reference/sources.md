@@ -37,7 +37,9 @@ while fitting apparel (then deleting it) is fine; the output must be your own dr
   measured on vanilla `DoorSimple_Mover` / `FenceGate_Mover_*` (leaf at x 0–34 of 64).
 - Terrain scale: vanilla surfaces are 1024 px; `GenericFloorTile` has 16×16 tiles (one per
   cell) → 64 px/cell. The UV mapping itself is in the terrain shader (not decompilable here).
-- Containers/fills and "what users rejected": user feedback during Barn Expanded rounds 1–2,
-  relayed by the session that drew it, plus MO / MO Adaptive Storage sheets (`assets/mods/`).
-- Texture replacement: `vanilla_tex.py --overrides` found Vanilla Textures Expanded (2016436324)
-  and Gerrymon's Upscaled Vanilla Textures (3276562906) active in this modlist.
+- Containers/fills, "consistency across a set" and "common rejections": generalised from user
+  feedback on a storage/barn mod (rounds 1–3) and storage-mod reference sheets. The mod-specific
+  decisions (palettes, straw/kibble recipes, the exact rejected pieces) live in that mod's
+  `Art/STYLE.md`, not here.
+- Texture replacement: `vanilla_tex.py --overrides` is how to find the user's "vanilla"; at
+  research time it reported Vanilla Textures Expanded and Gerrymon's Upscaled Vanilla Textures.

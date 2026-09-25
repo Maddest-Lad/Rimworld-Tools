@@ -164,6 +164,10 @@ the SVG text:
   the script — shared by every piece, so related parts cannot drift apart.
 - **Helper functions return SVG strings** (`rect()`, `outline()`, `tuft()`, `pellet()`) and a
   `write(name, body)` that wraps them in the `<svg>` header. Keep coordinates in cell units.
+- **One module per material**: when several generators draw the same material (straw, a wood
+  plank, a pile), put its palette and draw function in one module (`Art/materials.py`,
+  `fill(region, seed, density)`) and import it everywhere. Copy-pasted variants drift apart
+  within a round or two.
 - **Seeded randomness**: `random.Random(seed)` per piece, seed from the piece name, so reruns
   give identical output and the user's approved version is reproducible.
 - **Output stays editable**: readable SVG with comments and grouped layers, so a single piece

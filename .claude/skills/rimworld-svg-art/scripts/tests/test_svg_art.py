@@ -20,6 +20,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import analyze
 import render
+import sheet
 import vanilla_tex
 
 
@@ -279,3 +280,32 @@ def test_door_layers_follow_engine_offsets():
     assert two[0]["size"] == [1.0, 1.0] and two[2]["size"] == [2, 1] and two[2]["tint"] == "stuff"
     east = compose.door_layers({"door": {"mover": "m.png"}, "center": [0, 0], "axis": "y"})
     assert east[0]["rot"] == 90 and east[1]["center"] == [0, 0.0]
+
+
+# ---------------------------------------------------------------- sheet
+
+
+def test_sheet_pairs_masks_and_parses_zooms(tmp_path):
+    names = ["Stall_south", "Stall_southm", "Crate_m", "Crate", "Manure_a"]
+    files = [tmp_path / f"{n}.png" for n in names]
+    sprites, masks = sheet.split_masks(files)
+    assert [f.stem for f in sprites] == ["Stall_south", "Crate", "Manure_a"]
+    assert masks["Stall_south"].stem == "Stall_southm" and masks["Crate"].stem == "Crate_m"
+    assert sheet.parse_zoom("native, 30,12") == ["native", 30, 12]
+
+
+def test_sheet_tints_only_matching_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        render, "background", lambda name, w, h, ppc: Image.new("RGBA", (w, h), (0, 0, 0, 255))
+    )
+    white = Image.new("RGBA", (64, 64), (255, 255, 255, 255))
+    for n in ("Box", "Item"):
+        white.save(tmp_path / f"{n}.png")
+    out = sheet.build(
+        sorted(tmp_path.glob("*.png")), [64], 64, "soil", [("red", (255, 0, 0))], tinted="Box"
+    )
+    px = np.asarray(out)
+    # both 64 px tiles sit on the first row; Box is tinted red, Item stays white
+    row = px[sheet.PAD + 2 * sheet.LABEL + 32]
+    colours = {tuple(c[:3]) for c in row}
+    assert (255, 0, 0) in colours and (255, 255, 255) in colours

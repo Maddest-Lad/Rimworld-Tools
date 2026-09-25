@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Loaded only when Biotech is active (LoadFolders.xml IfModActive), so no guard needed. -->
+<Patch>
+  <Operation Class="PatchOperationAdd">
+    <xpath>Defs/ThingDef[defName="MyMod_Sledgehammer"]/weaponTags</xpath>
+    <value><li>MyMod_BiotechTag</li></value>
+  </Operation>
+</Patch>

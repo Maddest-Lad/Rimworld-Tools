@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Template: plant, 128 px (Graphic_Random folder or Graphic_Single). Plants are the exception
+       to the black outline: the edge is a darker, same-hue shade of the plant (analyze.py
+       edge_ratio about 0.5 to 0.7), 2 to 3 px, and shading is soft and low-contrast.
+       Base of the stem near the bottom centre: the game draws plants from the bottom of the cell
+       and sways them about that point. Leaves arch up and droop at the tip; left-hand leaves are
+       the right-hand leaf mirrored (scale -1 1), not rotated, so they droop the same way.
+       Back leaves darker. The painterly mottling of vanilla foliage comes from an feTurbulence
+       noise layer clipped to the silhouette (filter "grain"); keep it subtle. -->
+  <defs>
+    <!-- a leaf pointing right from its base at 0,0: rises, then the tip droops -->
+    <path id="leaf" d="M0 0 C6 -18 26 -30 44 -22 C50 -19 52 -12 50 -8 C40 -16 22 -12 0 0 Z"/>
+    <g id="leaf-lit">
+      <use xlink:href="#leaf" fill="#2f4a1c" stroke="#2f4a1c" stroke-width="5" stroke-linejoin="round"/>
+      <use xlink:href="#leaf" fill="#6f9a3a"/>
+      <path d="M4 -6 C16 -18 32 -22 46 -14" stroke="#56802c" stroke-width="2" fill="none"/>
+    </g>
+    <g id="leaf-dark">
+      <use xlink:href="#leaf" fill="#263d17" stroke="#263d17" stroke-width="5" stroke-linejoin="round"/>
+      <use xlink:href="#leaf" fill="#557a2c"/>
+      <path d="M4 -6 C16 -18 32 -22 46 -14" stroke="#446524" stroke-width="2" fill="none"/>
+    </g>
+    <g id="flower">
+      <circle r="10" fill="#8a4a12"/>
+      <circle r="7.5" fill="#e0902c"/>
+      <circle r="3.5" cx="-1.5" cy="-1.5" fill="#f5c046"/>
+    </g>
+    <!-- grain: fractal noise -> dark blotches, kept only where the art is (in SourceAlpha) -->
+    <filter id="grain" x="0" y="0" width="1" height="1">
+      <feTurbulence type="fractalNoise" baseFrequency="0.12" numOctaves="3" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -3 1.4" result="dark"/>
+      <feComposite in="dark" in2="SourceAlpha" operator="in"/>
+    </filter>
+  </defs>
+
+  <g id="art">
+    <!-- back leaves (right-hand, then mirrored) -->
+    <use xlink:href="#leaf-dark" transform="translate(66 104) rotate(-40) scale(1.1)"/>
+    <use xlink:href="#leaf-dark" transform="translate(62 104) scale(-1 1) rotate(-40) scale(1.1)"/>
+    <use xlink:href="#leaf-dark" transform="translate(66 106) rotate(-70) scale(0.95)"/>
+    <use xlink:href="#leaf-dark" transform="translate(62 106) scale(-1 1) rotate(-70) scale(0.95)"/>
+    <!-- stems -->
+    <g fill="none" stroke-linecap="round">
+      <path d="M64 110 C62 94 58 80 52 62 M64 110 C66 92 70 78 78 58 M64 110 L64 46" stroke="#2f4a1c" stroke-width="7"/>
+      <path d="M64 110 C62 94 58 80 52 62 M64 110 C66 92 70 78 78 58 M64 110 L64 46" stroke="#5c7f2e" stroke-width="3"/>
+    </g>
+    <!-- front leaves -->
+    <use xlink:href="#leaf-lit" transform="translate(66 108) rotate(-8)"/>
+    <use xlink:href="#leaf-lit" transform="translate(62 108) scale(-1 1) rotate(-8)"/>
+    <use xlink:href="#leaf-lit" transform="translate(66 104) rotate(-25) scale(0.85)"/>
+    <use xlink:href="#leaf-lit" transform="translate(62 104) scale(-1 1) rotate(-25) scale(0.85)"/>
+    <!-- flowers: own colours, edge a darker orange -->
+    <use xlink:href="#flower" transform="translate(52 60)"/>
+    <use xlink:href="#flower" transform="translate(78 56) scale(0.9)"/>
+    <use xlink:href="#flower" transform="translate(64 44) scale(0.85)"/>
+  </g>
+  <!-- grain overlay -->
+  <use xlink:href="#art" filter="url(#grain)" opacity="0.35"/>
+</svg>

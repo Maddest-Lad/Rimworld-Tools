@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Template: resource item, large stack (_c). A heap filling most of the cell, still 3+ px
+       clear of the canvas edge so the outline and anti-aliasing are not cut off. -->
+  <defs>
+    <path id="gem" d="M-6 6 L-3 -5 L3 -8 L8 -2 L6 8 L-1 10 Z"/>
+    <clipPath id="c-gem"><use xlink:href="#gem"/></clipPath>
+    <g id="piece">
+      <use xlink:href="#gem" fill="#000000" stroke="#000000" stroke-width="5" stroke-linejoin="round"/>
+      <use xlink:href="#gem" fill="#3f9e8f"/>
+      <g clip-path="url(#c-gem)">
+        <path d="M-3 -5 L3 -8 L8 -2 L1 0 Z" fill="#6ab4a6"/>
+        <path d="M1 0 L8 -2 L6 8 L-1 10 Z" fill="#347f72"/>
+      </g>
+    </g>
+  </defs>
+  <use xlink:href="#piece" transform="translate(20 22) rotate(-30)"/>
+  <use xlink:href="#piece" transform="translate(36 18) rotate(10)"/>
+  <use xlink:href="#piece" transform="translate(47 30) rotate(35)"/>
+  <use xlink:href="#piece" transform="translate(15 38) rotate(-5)"/>
+  <use xlink:href="#piece" transform="translate(29 32) rotate(-15)"/>
+  <use xlink:href="#piece" transform="translate(40 44) rotate(20)"/>
+  <use xlink:href="#piece" transform="translate(25 48) rotate(5)"/>
+</svg>

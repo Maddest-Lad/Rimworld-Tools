@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64" height="64" viewBox="0 0 64 64">
+  <!-- crate_north: the back. The camera never moves, so the front face stays at the bottom of the
+       image in every rotation; only the object's own features move (no latch here). -->
+  <defs>
+    <rect id="box" x="8" y="9" width="48" height="46" rx="2"/>
+    <clipPath id="c-box"><use xlink:href="#box"/></clipPath>
+    <linearGradient id="lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f4f4"/>
+      <stop offset="1" stop-color="#d6d6d6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 1 outline -->
+  <use xlink:href="#box" fill="#000000" stroke="#000000" stroke-width="5" stroke-linejoin="round"/>
+
+  <g clip-path="url(#c-box)">
+    <!-- 2 top face (lid) and front face -->
+    <rect x="8" y="9" width="48" height="36" fill="url(#lid)"/>
+    <rect x="8" y="45" width="48" height="10" fill="#9c9c9c"/>
+    <!-- 3 plank seams on the lid, grain shading, lid lip shadow -->
+    <g stroke="#a8a8a8" stroke-width="1.2">
+      <path d="M8 21 H56 M8 33 H56"/>
+    </g>
+    <g fill="#000" opacity="0.06">
+      <rect x="8" y="17" width="48" height="4"/><rect x="8" y="29" width="48" height="4"/><rect x="8" y="41" width="48" height="4"/>
+    </g>
+    <rect x="8" y="45" width="48" height="2" fill="#000" opacity="0.25"/>
+    <g stroke="#7e7e7e" stroke-width="1.2">
+      <path d="M8 50 H56"/>
+    </g>
+    <!-- 4 metal corner bands: own mid grey, black in the mask -->
+    <g fill="#8c8c8c">
+      <rect x="8" y="9" width="7" height="46"/><rect x="49" y="9" width="7" height="46"/>
+    </g>
+    <g fill="#b0b0b0">
+      <rect x="9" y="10" width="2" height="34"/><rect x="50" y="10" width="2" height="34"/>
+    </g>
+    <g fill="#bdbdbd">
+      <circle cx="11.5" cy="14" r="1.3"/><circle cx="52.5" cy="14" r="1.3"/>
+      <circle cx="11.5" cy="40" r="1.3"/><circle cx="52.5" cy="40" r="1.3"/>
+    </g>
+    <path d="M8 45 H15 M49 45 H56" stroke="#555555" stroke-width="1.5"/>
+  </g>
+</svg>

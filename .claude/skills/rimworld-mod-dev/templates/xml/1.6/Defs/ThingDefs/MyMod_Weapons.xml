@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <!-- Copied from vanilla MeleeWeapon_Mace (see def_lookup.py MeleeWeapon_Mace), then changed. -->
+  <ThingDef ParentName="BaseMeleeWeapon_Blunt_Quality">
+    <defName>MyMod_Sledgehammer</defName>
+    <label>sledgehammer</label>
+    <description>A heavy, long-handled hammer. Slow, but it hits hard.</description>
+    <possessionCount>1</possessionCount>
+    <graphicData>
+      <!-- Textures/MyMod/Weapons/Sledgehammer.png; vanilla mace art until you add your own -->
+      <texPath>Things/Item/Equipment/WeaponMelee/Mace</texPath>
+      <graphicClass>Graphic_Single</graphicClass>
+    </graphicData>
+    <techLevel>Industrial</techLevel>
+    <costStuffCount>100</costStuffCount>
+    <stuffCategories>
+      <li>Metallic</li>
+    </stuffCategories>
+    <statBases>
+      <WorkToMake>10000</WorkToMake>
+      <Mass>4</Mass>
+    </statBases>
+    <equippedAngleOffset>-65</equippedAngleOffset>
+    <recipeMaker>
+      <researchPrerequisite>Smithing</researchPrerequisite>
+      <skillRequirements>
+        <Crafting>5</Crafting>
+      </skillRequirements>
+      <displayPriority>400</displayPriority>
+    </recipeMaker>
+    <weaponTags>
+      <li>MedievalMeleeDecent</li>
+    </weaponTags>
+    <tools>
+      <li>
+        <label>handle</label>
+        <capacities><li>Poke</li></capacities>
+        <power>9</power>
+        <cooldownTime>2.3</cooldownTime>
+      </li>
+      <li>
+        <label>head</label>
+        <labelUsedInLogging>false</labelUsedInLogging>
+        <capacities><li>Blunt</li></capacities>
+        <power>18</power>
+        <cooldownTime>2.5</cooldownTime>
+      </li>
+    </tools>
+  </ThingDef>
+</Defs>

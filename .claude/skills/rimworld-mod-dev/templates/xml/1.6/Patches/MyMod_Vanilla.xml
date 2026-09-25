@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Patch>
+  <!-- Change an existing value. -->
+  <Operation Class="PatchOperationReplace">
+    <xpath>Defs/ThingDef[defName="MeleeWeapon_Mace"]/statBases/Mass</xpath>
+    <value><Mass>2</Mass></value>
+  </Operation>
+
+  <!-- Set a value that may be inherited (absent from the def's own XML). -->
+  <Operation Class="PatchOperationConditional">
+    <xpath>Defs/ThingDef[defName="MeleeWeapon_Mace"]/statBases/Beauty</xpath>
+    <match Class="PatchOperationReplace">
+      <xpath>Defs/ThingDef[defName="MeleeWeapon_Mace"]/statBases/Beauty</xpath>
+      <value><Beauty>1</Beauty></value>
+    </match>
+    <nomatch Class="PatchOperationAdd">
+      <xpath>Defs/ThingDef[defName="MeleeWeapon_Mace"]/statBases</xpath>
+      <value><Beauty>1</Beauty></value>
+    </nomatch>
+  </Operation>
+
+  <!-- Optional mod: FindMod compares the mod's NAME (About.xml <name>), not its packageId. -->
+  <Operation Class="PatchOperationFindMod">
+    <mods>
+      <li>Vanilla Factions Expanded - Empire</li>
+    </mods>
+    <match Class="PatchOperationAdd">
+      <xpath>Defs/ThingDef[defName="MyMod_Sledgehammer"]/weaponTags</xpath>
+      <value><li>MyMod_EmpireTag</li></value>
+    </match>
+  </Operation>
+</Patch>

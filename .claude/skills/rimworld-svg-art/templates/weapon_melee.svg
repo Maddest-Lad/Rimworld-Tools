@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Template: melee weapon (machete), Graphic_Single, 128 px, drawn east-facing (blade right).
+       Made from stuff (stuffCategories), so it is greyscale: the game multiplies the whole
+       texture by the material colour (preview with the render.py tint option: steel, wood, plasteel).
+       Layers: 1 outline underlay, 2 flat fills, 3 shading clipped to each part, 4 inner lines.
+       Outline = every part stroked 6 wide in near-black underneath the fills -> 3 px visible. -->
+  <defs>
+    <path id="blade" d="M52 58 L104 52 Q118 51 121 58 Q117 67 104 68 L52 69 Z"/>
+    <rect id="guard" x="46" y="53" width="7" height="21" rx="2"/>
+    <path id="grip" d="M13 60 Q12 57 15 57 L47 59 L47 68 L15 70 Q12 70 13 67 Z"/>
+    <circle id="pommel" cx="12" cy="63.5" r="5"/>
+    <clipPath id="c-blade"><use xlink:href="#blade"/></clipPath>
+    <clipPath id="c-grip"><use xlink:href="#grip"/></clipPath>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="#ececec"/>
+      <stop offset="1" stop-color="#c4c4c4"/>
+    </linearGradient>
+    <linearGradient id="grip-g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6a6a6a"/>
+      <stop offset="1" stop-color="#3e3e3e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 1 outline underlay -->
+  <g fill="#000000" stroke="#000000" stroke-width="6" stroke-linejoin="round">
+    <use xlink:href="#blade"/><use xlink:href="#grip"/><use xlink:href="#pommel"/><use xlink:href="#guard"/>
+  </g>
+
+  <!-- 2 fills -->
+  <use xlink:href="#blade" fill="url(#metal)"/>
+  <use xlink:href="#grip" fill="url(#grip-g)"/>
+  <use xlink:href="#pommel" fill="#9a9a9a"/>
+  <use xlink:href="#guard" fill="#7a7a7a"/>
+
+  <!-- 3 shading: lower-bevel shade, grip wrap bands -->
+  <g clip-path="url(#c-blade)">
+    <path d="M52 64 L106 62 Q116 62 121 58 L121 72 L52 72 Z" fill="#000" opacity="0.08"/>
+  </g>
+  <g clip-path="url(#c-grip)" fill="#000" opacity="0.25">
+    <rect x="21" y="55" width="3" height="18"/><rect x="30" y="55" width="3" height="18"/><rect x="39" y="55" width="3" height="18"/>
+  </g>
+
+  <!-- 4 inner lines: thinner and softer than the silhouette -->
+  <path d="M55 64 L104 62.5" stroke="#9a9a9a" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+  <circle cx="11" cy="62" r="1.6" fill="#d9d9d9"/>
+</svg>

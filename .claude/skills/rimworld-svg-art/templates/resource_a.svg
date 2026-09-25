@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Template: resource item, Graphic_StackCount, 64 px (texPath = the folder; files sort a < b < c
+       for small, medium and large stacks). _a is one small piece near the centre.
+       Own colour (not stuff-tinted). Outline: 3 px at 64 px, same near-black as everything else.
+       Light from above: highlight facets on top, darkest facets bottom-right. -->
+  <defs>
+    <path id="gem" d="M24 40 L28 26 L35 22 L42 30 L40 42 L31 45 Z"/>
+    <clipPath id="c-gem"><use xlink:href="#gem"/></clipPath>
+  </defs>
+  <use xlink:href="#gem" fill="#000000" stroke="#000000" stroke-width="6" stroke-linejoin="round"/>
+  <use xlink:href="#gem" fill="#3f9e8f"/>
+  <g clip-path="url(#c-gem)">
+    <path d="M28 26 L35 22 L42 30 L33 33 Z" fill="#6ab4a6"/>
+    <path d="M33 33 L42 30 L40 42 L31 45 Z" fill="#347f72"/>
+  </g>
+</svg>

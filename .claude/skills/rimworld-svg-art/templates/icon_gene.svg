@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Template: gene / ability / command icon, 128 px (iconPath). Shown in the UI on a dark
+       button, 30 to 75 px on screen, so: one bold silhouette, 2 or 3 flat colours, 5 px near-black
+       outline, 8 to 20 px transparent margin, nearly no gradients. Inner lines 2 to 3 px,
+       darker shade of the fill (not black). Muted mid-saturation colours; white
+       for body-part genes. -->
+  <defs>
+    <path id="leaf" d="M64 14 C92 34 104 62 92 88 C84 104 70 112 64 114 C58 112 44 104 36 88 C24 62 36 34 64 14 Z"/>
+    <path id="stem" d="M64 60 L64 118"/>
+    <clipPath id="c-leaf"><use xlink:href="#leaf"/></clipPath>
+  </defs>
+
+  <!-- everything scaled 0.9 about the centre for a ~12 px margin; strokes scale too (10 -> 4.5 px) -->
+  <g transform="translate(6.4 4) scale(0.9)">
+    <!-- 1 outline -->
+    <use xlink:href="#leaf" fill="#000000" stroke="#000000" stroke-width="10" stroke-linejoin="round"/>
+    <use xlink:href="#stem" stroke="#000000" stroke-width="12" stroke-linecap="round"/>
+
+    <!-- 2 fills -->
+    <use xlink:href="#leaf" fill="#5f9446"/>
+    <use xlink:href="#stem" stroke="#4b7337" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- 3 one flat shade: the right half a step darker (light from the upper left) -->
+    <g clip-path="url(#c-leaf)">
+      <path d="M64 10 C80 40 80 90 64 120 L110 120 L110 10 Z" fill="#4b7a37"/>
+    </g>
+
+    <!-- 4 inner lines: darker fill, not black -->
+    <g stroke="#355727" stroke-width="3" stroke-linecap="round" fill="none">
+      <path d="M64 30 L64 108"/>
+      <path d="M64 56 L46 44 M64 74 L42 62 M64 92 L46 82 M64 56 L82 44 M64 74 L86 62 M64 92 L82 82"/>
+    </g>
+  </g>
+</svg>

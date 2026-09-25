@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" shape-rendering="crispEdges">
+  <!-- Mask for crate_north (Graphic_Multi masks: <name>_southm, no underscore before m).
+       Red = primary colour (stuff / colorOne), green = colorTwo, black = keep the texture's own
+       colour. Same geometry as the texture, pure colours only, no gradients or anti-aliasing. -->
+  <rect width="64" height="64" fill="#000000"/>
+  <rect x="15" y="6" width="34" height="52" fill="#ff0000"/>
+</svg>

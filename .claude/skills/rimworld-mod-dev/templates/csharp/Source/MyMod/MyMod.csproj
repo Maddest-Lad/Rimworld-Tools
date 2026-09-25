@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- RimWorld 1.6 mod assembly. Lives in <Mod>/Source/MyMod/, builds into <Mod>/1.6/Assemblies/. -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <RootNamespace>MyMod</RootNamespace>
+    <AssemblyName>MyMod</AssemblyName>
+    <OutputPath>..\..\1.6\Assemblies\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Game reference assemblies (publicized stubs, not Ludeon's DLLs). Pin to the game build if needed. -->
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.6.*" />
+    <!-- Compile against Harmony but never ship 0Harmony.dll: the Harmony mod (brrainz.harmony) provides it.
+         Keep this <= the 0Harmony.dll that mod ships (2.4.1 as of 2026-09). -->
+    <PackageReference Include="Lib.Harmony" Version="2.4.1" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

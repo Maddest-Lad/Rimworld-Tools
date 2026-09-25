@@ -37,3 +37,14 @@ workspace/
 
 # Local backups of user config files (not tracked)
 backups/
+
+# Mod-dev skill: decompiled game code (Ludeon's, reference only) and C# build output
+.claude/skills/rimworld-mod-dev/.cache/
+.claude/skills/rimworld-mod-dev/templates/csharp/**/bin/
+.claude/skills/rimworld-mod-dev/templates/csharp/**/obj/
+.claude/skills/rimworld-mod-dev/templates/csharp/1.6/
+
+# SVG art skill: extracted vanilla textures (Ludeon's, reference only)
+.claude/skills/rimworld-svg-art/.cache/
+.claude/skills/rimworld-svg-art/assets/*
+!.claude/skills/rimworld-svg-art/assets/README.md

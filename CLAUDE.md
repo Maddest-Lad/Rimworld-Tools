@@ -54,6 +54,10 @@ warning is fine or explains a choice, record it there in the same turn. Conventi
 
 - `/rimworld-modpack` — build, extend, vet and sort a modpack end to end.
 - `/rimworld-log-debug` — triage `Player.log` errors and attribute them to mods.
+- `/rimworld-mod-dev` — author, patch, port and debug 1.6 mods (XML + C#); offline patch dry-runs,
+  def lookup and decompiled-source lookup. Mods under development live in `workspace/<Mod>`.
+- `/rimworld-svg-art` — hand-write RimWorld-style art as SVG and render game-ready PNGs; vanilla
+  texture extraction/measurement and in-game-scale previews.
 
 ## Rules
 
@@ -61,4 +65,4 @@ warning is fine or explains a choice, record it there in the same turn. Conventi
 - Never edit Steam manifests or anything under `links/workshop` or `links/steam`.
 - Do not hand-edit `ModsConfig.xml`; go through `modlist_enable` / `modlist_disable` / `sort_modlist` / snapshots.
 - Mutating tools (subscribe/unsubscribe, enable/disable/sort writes) need the user's go-ahead for their list.
-- `make test` / `make check` at the root cover the server and the log parser.
+- `make test` / `make check` at the root cover the server, the log parser, the mod-dev and svg-art scripts.

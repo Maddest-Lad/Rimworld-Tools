@@ -1,4 +1,4 @@
-"""Shared loader that mirrors RimWorld 1.6's XML pipeline closely enough for offline checks.
+"""Shared loader that mirrors RimWorld 1.7's XML pipeline closely enough for offline checks.
 
 Behaviour copied from the decompiled game (Verse.ModContentPack.InitLoadFolders,
 DirectXmlLoader.XmlAssetsInModFolder, LoadedModManager.CombineIntoUnifiedXML / ApplyPatches /

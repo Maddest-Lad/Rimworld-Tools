@@ -91,6 +91,33 @@ def test_search_keeps_successful_page_and_native_sort_mapping():
     assert result["failed"] == [{"page": 2, "reason": "Disconnected"}]
 
 
+def test_search_adds_one_tag_group_per_page_for_any_of_versions():
+    client = object.__new__(SteamClient)
+    client.ugc = 1
+    groups = []
+
+    def bind(name, *_):
+        if name == "CreateQueryAllUGCRequestPage":
+            return lambda *args: args[-1]
+        if name == "AddRequiredTagGroup":
+
+            def add_group(_ugc, _handle, ref):
+                array = ref._obj
+                groups.append([array.strings[i] for i in range(array.count)])
+                return True
+
+            return add_group
+        return lambda *_: True
+
+    client._ugc = bind
+    client.read_query = lambda h: {"items": [{"pfid": str(h)}], "total": 1, "failed": []}
+    client.search("q", 20, ["Mod"], [], "relevance", 90, ["1.7", "1.6"])
+    assert groups == [[b"1.7", b"1.6"]]
+    groups.clear()
+    client.search("q", 20, ["Mod", "1.7"], [], "relevance", 90)
+    assert groups == []
+
+
 def test_helper_protocol_rejects_incomplete_results():
     assert not _valid_result("details", {"account": "1"})
     assert not _valid_result("probe", {"account": "1"})

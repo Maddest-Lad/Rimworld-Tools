@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from . import advisories, paths, steam_transport, workshop_ids, workshop_queries
-from .config import RIMWORLD_APP_ID, Settings
+from .config import RIMWORLD_APP_ID, RUNS_PREVIOUS_VERSION, Settings
 from .steam_client import SORT_MODES
 
 logger = logging.getLogger(__name__)
@@ -121,11 +121,11 @@ async def resolve_url(settings: Settings, url: str, refresh: bool = False) -> di
     return out
 
 
-_FALLBACK_GAME_VERSION = "1.6"
+_FALLBACK_GAME_VERSION = "1.7"
 
 
 def detected_game_version(settings: Settings) -> str:
-    """major.minor of the installed game, e.g. '1.6'; falls back if RimWorld isn't found."""
+    """major.minor of the installed game, e.g. '1.7'; falls back if RimWorld isn't found."""
     v = paths.discover(settings).version
     if v:
         parts = v.split(".")
@@ -150,14 +150,30 @@ async def search(
     if sort == "relevance" and not query.strip():
         return {"error": "relevance sort needs a query.", "hint": "Use sort='trend' to browse."}
 
-    version = game_version or await asyncio.to_thread(detected_game_version, settings)
-    if "\0" in version:
-        return {"error": "Invalid game version tag.", "hint": "Use a version such as 1.6, or any."}
-    required = ["Mod"] + ([version] if version.lower() != "any" else [])
+    if game_version is None:
+        installed = await asyncio.to_thread(detected_game_version, settings)
+        versions = [installed] + (
+            [RUNS_PREVIOUS_VERSION[installed]] if installed in RUNS_PREVIOUS_VERSION else []
+        )
+    elif "\0" in game_version:
+        return {
+            "error": "Invalid game version tag.",
+            "hint": "Use a version such as 1.7, a list such as 1.7,1.6, or any.",
+        }
+    elif game_version.strip().lower() == "any":
+        versions = []
+    else:
+        versions = [v.strip() for v in game_version.split(",") if v.strip()]
+    # One version is a required tag; several form a tag group (Steam matches any of them).
+    required = ["Mod"] + (versions if len(versions) == 1 else [])
+    any_of = versions if len(versions) > 1 else []
     excluded = ([] if include_translations else ["Translation"]) + (
         [] if include_scenarios else ["Scenario"]
     )
-    filters = {"required_tags": required, "excluded_tags": excluded, "sort": sort}
+    filters: dict[str, Any] = {"required_tags": required}
+    if any_of:
+        filters["any_of_tags"] = any_of
+    filters |= {"excluded_tags": excluded, "sort": sort}
     if sort == "trend":
         filters["days"] = days
 
@@ -176,6 +192,7 @@ async def search(
         query=query,
         limit=limit,
         required=required,
+        any_of=any_of,
         excluded=excluded,
         sort=sort,
         days=days,

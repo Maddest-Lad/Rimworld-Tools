@@ -6,7 +6,7 @@ and concatenates. The tier sets are the constants in
 
 | Tier | Members | Also absorbs |
 |---|---|---|
-| 0 | `zetrith.prepatcher`, `brrainz.harmony`, `brrainz.visualexceptions`, Core and every DLC | their transitive dependencies |
+| 0 | `zetrith.prepatcher` (if still active), `brrainz.harmony`, `brrainz.visualexceptions`, Core and every DLC | their transitive dependencies |
 | 1 | Known frameworks (`TIER_ONE`) and community `loadTop` mods | their transitive dependencies |
 | 2 | Everything else | — |
 | 3 | Community `loadBottom` mods | their transitive dependants |
@@ -19,8 +19,8 @@ only adds; `removeLoadAfter` / `removeLoadBefore` in `userRules.json` is how an 
 
 | Mod | packageId | Needed by |
 |---|---|---|
-| Harmony | `brrainz.harmony` | almost every C# mod |
-| Prepatcher | `zetrith.prepatcher` | mods that add fields to vanilla types (Multiplayer, some performance mods) |
+| Harmony | `brrainz.harmony` | almost every C# mod; on 1.7 it provides Harmony 3 (`1.7/` folder) |
+| Prepatcher | `zetrith.prepatcher` | mods that add fields to vanilla types (Multiplayer, some performance mods). **Breaks 1.7** (Mono-only reloader) until it declares 1.7 |
 | HugsLib | `unlimitedhugs.hugslib` | older mods with settings/update news |
 | Vanilla Expanded Framework | `oskarpotocki.vanillafactionsexpanded.core` | every Vanilla ... Expanded mod |
 | XML Extensions | `imranfish.xmlextensions` | XML-only mods with settings or conditional patches |
@@ -42,6 +42,6 @@ them in `modDependencies` / `loadAfter`; the tier just guarantees an early posit
 | Ideology | `ludeon.rimworld.ideology` | 1392840 |
 | Biotech | `ludeon.rimworld.biotech` | 1826140 |
 | Anomaly | `ludeon.rimworld.anomaly` | 2380740 |
-| Odyssey (1.6) | `ludeon.rimworld.odyssey` | 3022790 |
+| Odyssey | `ludeon.rimworld.odyssey` | 3022790 |
 
 packageIds are case-insensitive everywhere in the server.

@@ -49,7 +49,21 @@ async def test_search_filters_validation_and_partial_results(tmp_path, monkeypat
     result = await workshop.search(settings, "harmony", 80, "1.6", False, False, "relevance", 90)
     assert result["failed"][0]["page"] == 2
     assert remote.call_args.kwargs["required"] == ["Mod", "1.6"]
+    assert remote.call_args.kwargs["any_of"] == []
     assert remote.call_args.kwargs["excluded"] == ["Translation", "Scenario"]
+    result = await workshop.search(settings, "x", 20, "1.7, 1.6", False, False, "relevance", 90)
+    assert remote.call_args.kwargs["required"] == ["Mod"]
+    assert remote.call_args.kwargs["any_of"] == ["1.7", "1.6"]
+    assert result["filters"]["any_of_tags"] == ["1.7", "1.6"]
+    await workshop.search(settings, "x", 20, "any", False, False, "relevance", 90)
+    assert remote.call_args.kwargs["required"] == ["Mod"]
+    assert remote.call_args.kwargs["any_of"] == []
+    monkeypatch.setattr(workshop, "detected_game_version", lambda _s: "1.7")
+    await workshop.search(settings, "x", 20, None, False, False, "relevance", 90)
+    assert remote.call_args.kwargs["any_of"] == ["1.7", "1.6"]  # 1.7 runs 1.6 mods unchanged
+    monkeypatch.setattr(workshop, "detected_game_version", lambda _s: "1.8")
+    await workshop.search(settings, "x", 20, None, False, False, "relevance", 90)
+    assert remote.call_args.kwargs["required"] == ["Mod", "1.8"]
     assert (
         "needs a query"
         in (await workshop.search(settings, "", 20, None, False, False, "relevance", 90))["error"]

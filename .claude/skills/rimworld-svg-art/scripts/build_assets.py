@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["UnityPy>=1.20", "Pillow>=10.1", "numpy>=1.26"]
+# dependencies = ["zstandard>=0.22", "Pillow>=10.1", "numpy>=1.26"]
 # ///
 """Build the reference sprite sheets in `assets/` from the installed game (one-time, ~1-2 min).
 
@@ -239,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
         if not hits:
             print(f"{name}: no textures match {rx}", file=sys.stderr)
             continue
-        files = vt.extract(hits, vt.CACHE / "png")
+        files = vt.extract(hits)
         for old in sheets.glob(f"{name}_*.png"):
             old.unlink()
         pages = contact_sheets(name, files, sheets)

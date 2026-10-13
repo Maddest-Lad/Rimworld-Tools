@@ -11,7 +11,7 @@ from src.rimworld_tools.config import Settings
 
 MODS_CONFIG = """﻿<?xml version="1.0" encoding="utf-8"?>
 <ModsConfigData>
-  <version>1.6.4871 rev590</version>
+  <version>1.7.4976 rev1043</version>
   <activeMods>
     <li>ludeon.rimworld</li>
     <li>author.dup_steam</li>
@@ -62,7 +62,7 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
             mods_dir=paths.Found(str(modsd), "t"),
             workshop_dir=paths.Found(str(ws), "t"),
             config_dir=paths.Found(str(cfg), "t"),
-            version="1.6.4871 rev590",
+            version="1.7.4976 rev1043",
         ),
     )
     monkeypatch.setattr(paths, "find_steam_root", lambda: None)
@@ -77,7 +77,7 @@ class TestModsConfig:
         p = tmp_path / "ModsConfig.xml"
         p.write_text(MODS_CONFIG, encoding="utf-8")
         cfg = modlist.read_mods_config(p)
-        assert cfg.version == "1.6.4871 rev590"
+        assert cfg.version == "1.7.4976 rev1043"
         assert cfg.active == [
             "ludeon.rimworld",
             "author.dup_steam",
@@ -99,11 +99,11 @@ class TestModsConfig:
     def test_write_preserves_unknown_root_fields(self, tmp_path: Path) -> None:
         p = tmp_path / "ModsConfig.xml"
         p.write_text(
-            "<ModsConfigData><version>1.6</version><customFlag>keep</customFlag>"
+            "<ModsConfigData><version>1.7</version><customFlag>keep</customFlag>"
             "<activeMods /><knownExpansions /></ModsConfigData>",
             encoding="utf-8",
         )
-        modlist.write_mods_config(p, modlist.ModsConfig("1.6", ["core"], []))
+        modlist.write_mods_config(p, modlist.ModsConfig("1.7", ["core"], []))
         root = ET.fromstring(p.read_text())
         assert root.findtext("customFlag") == "keep"
 

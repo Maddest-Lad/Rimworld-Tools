@@ -46,3 +46,10 @@ class QueryCompleted(ct.Structure):
         ("cached", ct.c_bool),
         ("cursor", ct.c_char * 256),
     ]
+
+
+class StringArray(ct.Structure):
+    """SteamParamStringArray_t, used by AddRequiredTagGroup (match any tag in the group)."""
+
+    _pack_ = 8
+    _fields_ = [("strings", ct.POINTER(ct.c_char_p)), ("count", ct.c_int32)]

@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from .config import RIMWORLD_APP_ID
-from .steam_types import QueryCompleted, UGCDetails
+from .steam_types import QueryCompleted, StringArray, UGCDetails
 
 RESULT_PREFIX = "RIMWORLD_TOOLS_RESULT:"
 CALL_TIMEOUT = 30
@@ -237,7 +237,14 @@ class SteamClient:
         return {"items": items, "failed": failed}
 
     def search(
-        self, query: str, limit: int, required: list[str], excluded: list[str], sort: str, days: int
+        self,
+        query: str,
+        limit: int,
+        required: list[str],
+        excluded: list[str],
+        sort: str,
+        days: int,
+        any_of: list[str] | None = None,
     ) -> dict:
         create = self._ugc(
             "CreateQueryAllUGCRequestPage",
@@ -251,6 +258,12 @@ class SteamClient:
         search_text = self._ugc("SetSearchText", ct.c_bool, ct.c_uint64, ct.c_char_p)
         required_tag = self._ugc("AddRequiredTag", ct.c_bool, ct.c_uint64, ct.c_char_p)
         excluded_tag = self._ugc("AddExcludedTag", ct.c_bool, ct.c_uint64, ct.c_char_p)
+        tag_group = self._ugc(
+            "AddRequiredTagGroup", ct.c_bool, ct.c_uint64, ct.POINTER(StringArray)
+        )
+        # Kept alive for every page's native calls; Steam copies the strings.
+        group_tags = (ct.c_char_p * len(any_of or []))(*(t.encode("utf-8") for t in any_of or []))
+        group = StringArray(group_tags, len(group_tags))
         trend_days = self._ugc("SetRankedByTrendDays", ct.c_bool, ct.c_uint64, ct.c_uint32)
         items, failed = [], []
         total = None
@@ -262,6 +275,8 @@ class SteamClient:
             try:
                 options = [(required_tag, tag.encode("utf-8")) for tag in required]
                 options += [(excluded_tag, tag.encode("utf-8")) for tag in excluded]
+                if any_of:
+                    options.append((tag_group, ct.byref(group)))
                 if query:
                     options.append((search_text, query.encode("utf-8")))
                 if sort == "trend":
@@ -474,6 +489,7 @@ def main() -> None:
                     request["excluded"],
                     request["sort"],
                     request["days"],
+                    request.get("any_of"),
                 )
             elif action == "state":
                 result = client.installation_state(request.get("pfids"))

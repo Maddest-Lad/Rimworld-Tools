@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["Pillow>=10", "numpy>=1.26", "UnityPy>=1.20", "resvg-py>=0.2"]
+# dependencies = ["zstandard>=0.22", "Pillow>=10", "numpy>=1.26", "resvg-py>=0.2"]
 # ///
 """Labelled contact sheet of finished PNGs: the whole set side by side, at native size and at
 game zoom. Use it to check that a set speaks one visual language (same material drawn the same

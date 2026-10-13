@@ -1,4 +1,4 @@
-"""Dry-run a mod's Patches and lint its Defs against the real 1.6 def tree. Never writes files.
+"""Dry-run a mod's Patches and lint its Defs against the installed 1.7 def tree. Never writes files.
 
     python patch_check.py MOD [--active] [--with MOD ...] [--json] [--verbose]
 

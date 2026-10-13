@@ -13,7 +13,7 @@ GOOD = """﻿<?xml version="1.0" encoding="utf-8"?>
   <author>Andreas Pardeike, Someone Else</author>
   <authors><li>Third</li></authors>
   <packageId>Brrainz.Harmony</packageId>
-  <supportedVersions><li>1.4</li><li>1.5.1234</li><li>v1.6</li><li>garbage</li></supportedVersions>
+  <supportedVersions><li>1.4</li><li>1.5.1234</li><li>v1.7</li><li>garbage</li></supportedVersions>
   <modVersion>2.3.6</modVersion>
   <modDependencies>
     <li>
@@ -34,7 +34,7 @@ MALFORMED = """<ModMetaData>
   <name>Broken & Co</name>
   <packageId>me.broken</packageId>
   <description>Unescaped < angle and & ampersand</description>
-  <supportedVersions><li>1.6</li></supportedVersions>
+  <supportedVersions><li>1.7</li></supportedVersions>
 </ModMetaData>
 """
 
@@ -42,12 +42,12 @@ VERSIONED = """<modMetaData>
   <packageId>me.versioned</packageId>
   <loadAfter><li>base.a</li></loadAfter>
   <loadAfterByVersion>
-    <v1.6><li>six.a</li></v1.6>
+    <v1.7><li>six.a</li></v1.7>
     <v1.5><li>five.a</li></v1.5>
   </loadAfterByVersion>
   <forceLoadAfter><li>always.a</li></forceLoadAfter>
   <modDependenciesByVersion>
-    <v1.6></v1.6>
+    <v1.7></v1.7>
   </modDependenciesByVersion>
   <modDependencies><li><packageId>legacy.dep</packageId><workshopUrl>https://steamcommunity.com/sharedfiles/filedetails/?id=42</workshopUrl></li></modDependencies>
 </modMetaData>
@@ -55,7 +55,7 @@ VERSIONED = """<modMetaData>
 
 DLC = """<ModMetaData>
   <packageId>Ludeon.RimWorld.Royalty</packageId>
-  <supportedVersions><li>1.6</li></supportedVersions>
+  <supportedVersions><li>1.7</li></supportedVersions>
 </ModMetaData>
 """
 
@@ -78,11 +78,11 @@ def mod_dir(
 class TestParse:
     def test_full_parse(self, tmp_path: Path) -> None:
         d = mod_dir(tmp_path, "harmony", GOOD)
-        a = mods.parse_about(d / "About" / "About.xml", "1.6")
+        a = mods.parse_about(d / "About" / "About.xml", "1.7")
         assert a.package_id == "brrainz.harmony"
         assert a.name == "Harmony"
         assert a.authors == ["Andreas Pardeike", "Someone Else", "Third"]
-        assert a.supported_versions == ["1.4", "1.5", "1.6"]  # normalised, garbage dropped
+        assert a.supported_versions == ["1.4", "1.5", "1.7"]  # normalised, garbage dropped
         assert a.mod_version == "2.3.6"
         assert len(a.dependencies) == 1  # isNull entry skipped
         dep = a.dependencies[0]
@@ -96,28 +96,28 @@ class TestParse:
 
     def test_bare_ampersand_and_lt_are_repaired_without_losing_fields(self, tmp_path: Path) -> None:
         d = mod_dir(tmp_path, "broken", MALFORMED)
-        a = mods.parse_about(d / "About" / "About.xml", "1.6")
+        a = mods.parse_about(d / "About" / "About.xml", "1.7")
         assert a.package_id == "me.broken"
         assert a.name == "Broken & Co"
-        assert a.supported_versions == ["1.6"]  # field AFTER the stray '<' survives
+        assert a.supported_versions == ["1.7"]  # field AFTER the stray '<' survives
         assert any("leniently" in w for w in a.warnings)
 
     def test_unclosed_tag_falls_through_to_soup(self, tmp_path: Path) -> None:
         d = mod_dir(
             tmp_path,
             "unclosed",
-            "<ModMetaData><packageId>me.unclosed</packageId><name>X<supportedVersions><li>1.6</li>"
+            "<ModMetaData><packageId>me.unclosed</packageId><name>X<supportedVersions><li>1.7</li>"
             "</supportedVersions></ModMetaData>",
         )
-        a = mods.parse_about(d / "About" / "About.xml", "1.6")
+        a = mods.parse_about(d / "About" / "About.xml", "1.7")
         assert a.package_id == "me.unclosed"
         assert any("leniently" in w for w in a.warnings)
 
     def test_by_version_replaces_and_force_always_applies(self, tmp_path: Path) -> None:
         d = mod_dir(tmp_path, "v", VERSIONED)
-        a = mods.parse_about(d / "About" / "About.xml", "1.6")
+        a = mods.parse_about(d / "About" / "About.xml", "1.7")
         assert a.load_after == ["six.a", "always.a"]  # base.a replaced, force appended
-        assert a.dependencies == []  # empty v1.6 block means "none", not "fall back"
+        assert a.dependencies == []  # empty v1.7 block means "none", not "fall back"
         a5 = mods.parse_about(d / "About" / "About.xml", "1.5")
         assert a5.load_after == ["five.a", "always.a"]
         a4 = mods.parse_about(d / "About" / "About.xml", "1.4")
@@ -126,22 +126,22 @@ class TestParse:
 
     def test_dlc_name_and_appid_backfill(self, tmp_path: Path) -> None:
         d = mod_dir(tmp_path, "Royalty", DLC)
-        m = mods.load_mod(d, "ludeon", "1.6")
+        m = mods.load_mod(d, "ludeon", "1.7")
         assert m.name == "Royalty"
         assert m.about is not None and m.about.steam_app_id == 1149640
 
     def test_case_insensitive_about_path(self, tmp_path: Path) -> None:
         d = mod_dir(tmp_path, "odd", GOOD, about_dir="about", about_file="about.xml")
-        m = mods.load_mod(d, "local", "1.6")
+        m = mods.load_mod(d, "local", "1.7")
         assert m.package_id == "brrainz.harmony"
         assert any("casing" in w for w in m.about.warnings)  # type: ignore[union-attr]
 
     def test_missing_about_and_scenario(self, tmp_path: Path) -> None:
         junk = mod_dir(tmp_path, "junk", None)
-        assert mods.load_mod(junk, "local", "1.6").warnings == ["no About/About.xml"]
+        assert mods.load_mod(junk, "local", "1.7").warnings == ["no About/About.xml"]
         sc = mod_dir(tmp_path, "scen", None)
         (sc / "x.rsc").write_text("", encoding="utf-8")
-        assert "scenario" in mods.load_mod(sc, "local", "1.6").warnings[0]
+        assert "scenario" in mods.load_mod(sc, "local", "1.7").warnings[0]
 
 
 class TestClassify:
@@ -192,7 +192,7 @@ class TestInventory:
         mod_dir(data, "Core", DLC.replace("Ludeon.RimWorld.Royalty", "Ludeon.RimWorld"))
         mod_dir(modsd, "Local", GOOD)
         mod_dir(ws, "2009463077", GOOD)  # duplicate packageId
-        mod_dir(modsd, "Old", GOOD.replace("<li>v1.6</li>", ""))
+        mod_dir(modsd, "Old", GOOD.replace("<li>v1.7</li>", ""))
         mod_dir(modsd, "junk", None)
         monkeypatch.setattr(
             paths,
@@ -201,7 +201,7 @@ class TestInventory:
                 game_dir=paths.Found(str(game), "t"),
                 mods_dir=paths.Found(str(modsd), "t"),
                 workshop_dir=paths.Found(str(ws), "t"),
-                version="1.6.4871 rev590",
+                version="1.7.4976 rev1043",
             ),
         )
         monkeypatch.setattr(paths, "find_steam_root", lambda: None)

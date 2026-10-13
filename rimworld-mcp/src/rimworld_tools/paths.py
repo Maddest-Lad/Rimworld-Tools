@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 _VERSION_RE = re.compile(r"^\d+\.\d+")
 
-_EXECUTABLES = ("RimWorldWin64.exe", "RimWorldWin.exe")
+_EXECUTABLES = ("RimWorld.exe",)
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class RimWorldPaths:
 
 
 def read_version(game_dir: Path) -> str | None:
-    """First line of Version.txt, e.g. '1.6.4871 rev573'. None if absent or malformed."""
+    """First line of Version.txt, e.g. '1.7.4976 rev1043'. None if absent or malformed."""
     try:
         first = (game_dir / "Version.txt").read_text(encoding="utf-8-sig").splitlines()[0].strip()
     except (OSError, IndexError, UnicodeDecodeError):

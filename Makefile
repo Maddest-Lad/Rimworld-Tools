@@ -18,7 +18,7 @@ test:  ## Run the MCP server tests, the log-parser, mod-dev and svg-art script t
 	"$(MAKE)" -C $(MCP) test
 	uv run --project $(MCP) pytest .claude/skills/rimworld-log-debug/scripts/tests
 	uv run --project $(MCP) pytest .claude/skills/rimworld-mod-dev/scripts/tests
-	uv run --no-project --python 3.12 --with pytest --with numpy --with Pillow --with resvg-py 		pytest .claude/skills/rimworld-svg-art/scripts/tests
+	uv run --no-project --python 3.12 --with pytest --with numpy --with Pillow --with resvg-py --with zstandard 		pytest .claude/skills/rimworld-svg-art/scripts/tests
 
 check:  ## Lint + format checks
 	"$(MAKE)" -C $(MCP) check

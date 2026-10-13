@@ -1,8 +1,12 @@
 # RimWorld Tools workspace
 
-Modpack building and debugging for RimWorld 1.6 (Steam edition, Windows 10 LTSC). The MCP server
-`rimworld-tools` is attached through `.mcp.json`; its source lives in `rimworld-mcp/` and has its
-own `CLAUDE.md` — read `rimworld-mcp/AGENTS.md` only when changing server code.
+Modpack building and debugging for RimWorld 1.7 (Steam edition, `unstable` beta branch, Windows
+10 LTSC). 1.7 runs on Ludeon's Waylith engine (.NET 10, Vulkan) instead of Unity/Mono: same
+game API and defs, 1.6 mods and saves load, but runtime-level mods (Prepatcher, native DLLs,
+Unity shaders, bundled 0Harmony) break — details in
+`.claude/skills/rimworld-mod-dev/reference/v17-changes.md`. The MCP server `rimworld-tools` is
+attached through `.mcp.json`; its source lives in `rimworld-mcp/` and has its own `CLAUDE.md` —
+read `rimworld-mcp/AGENTS.md` only when changing server code.
 
 ## Where things are
 
@@ -11,12 +15,12 @@ own `CLAUDE.md` — read `rimworld-mcp/AGENTS.md` only when changing server code
 
 | Link | Contents |
 |---|---|
-| `links/game` | RimWorld install (`Version.txt`, `Data/` for Core + DLC defs, `RimWorldWin64_Data/`) |
+| `links/game` | RimWorld install: `Version.txt`, `RimWorld.exe`, `Assembly-CSharp.dll` + engine DLLs at the root, `Data/<Core, DLC>/Defs` (+ `Shaders/`, DLC `Assets.zip`), Core textures/sounds in `Assets.zip` |
 | `links/mods` | Local `Mods/` folder (non-Workshop copies) |
 | `links/workshop` | Steam Workshop content `294100/<pfid>/` — never modify; Steam owns it |
 | `links/config` | `ModsConfig.xml` (active list), `Prefs.xml`, per-mod `Mod_<pfid>_*.xml` settings |
 | `links/saves` | Save games (`*.rws`) |
-| `links/logs` | `Player.log` (current run), `Player-prev.log`, `HugsLib/` |
+| `links/logs` | `…\RimWorld by Ludeon Studios\Logs`: `Player.log` (current run), `Player-prev.log`, `harmony.log.txt` |
 | `links/steam` | Steam root (`steamapps/`, `config/libraryfolders.vdf`) |
 
 Player.log can be hundreds of MB. Never `Read` it directly; use the log-debug skill's parser.
@@ -54,8 +58,9 @@ warning is fine or explains a choice, record it there in the same turn. Conventi
 
 - `/rimworld-modpack` — build, extend, vet and sort a modpack end to end.
 - `/rimworld-log-debug` — triage `Player.log` errors and attribute them to mods.
-- `/rimworld-mod-dev` — author, patch, port and debug 1.6 mods (XML + C#); offline patch dry-runs,
-  def lookup and decompiled-source lookup. Mods under development live in `workspace/<Mod>`.
+- `/rimworld-mod-dev` — author, patch, port and debug 1.7 mods (XML, C#, shaders); offline patch
+  dry-runs, def lookup, decompiled-source lookup, `-QuitAfterBoot` smoke tests. Mods under
+  development live in `workspace/<Mod>`.
 - `/rimworld-svg-art` — hand-write RimWorld-style art as SVG and render game-ready PNGs; vanilla
   texture extraction/measurement and in-game-scale previews.
 

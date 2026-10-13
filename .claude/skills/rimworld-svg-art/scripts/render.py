@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["resvg-py>=0.2", "Pillow>=10", "numpy>=1.26", "UnityPy>=1.20"]
+# dependencies = ["zstandard>=0.22", "resvg-py>=0.2", "Pillow>=10", "numpy>=1.26"]
 # ///
 """Rasterise hand-written SVGs to game-ready PNGs, lint them, and preview them as the game would.
 
@@ -16,7 +16,7 @@ Elements whose id starts with `guide` (a vanilla body under apparel, a cell grid
 before rendering, so reference underlays never reach the PNG.
 
 Output PNGs get a colour bleed: fully transparent pixels take the colour of the nearest opaque
-pixel, so mipmaps (the game uses trilinear + DXT, see reference/technical.md) do not pull
+pixel, so mipmaps (the game uses trilinear + BC7, see reference/technical.md) do not pull
 black or white halos into the edge. `--no-bleed` disables it.
 
 Lint (always runs): ERROR if a side is not a multiple of 4 (no compression). Warnings carry a
@@ -47,7 +47,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-STUFF = {  # stuffProps/color of vanilla materials, 1.6.4871
+STUFF = {  # stuffProps/color of vanilla materials, 1.7.4976
     "white": (255, 255, 255),
     "steel": (105, 105, 105),
     "wood": (133, 97, 67),
@@ -308,8 +308,8 @@ def background(name: str, w: int, h: int, px_per_cell: int) -> Image.Image:
 
             hits = vt.search(vt.load_index(), tex_re)
             if hits:
-                tile = Image.open(vt.extract(hits[:1], vt.CACHE / "png")[0]).convert("RGBA")
-        except Exception as e:  # noqa: BLE001 - no game files / UnityPy failure: flat colour
+                tile = Image.open(vt.extract(hits[:1])[0]).convert("RGBA")
+        except Exception as e:  # noqa: BLE001 - no game files / unreadable pack: flat colour
             print(f"(background {name}: {e}; using a flat colour)", file=sys.stderr)
     if tile is None:
         return Image.new("RGBA", (w, h), flat + (255,))
@@ -361,7 +361,7 @@ def ref_images(pattern: str | None, limit: int) -> list[tuple[str, Image.Image]]
         for m in mask_names(Path(h["path"]).name)
     }
     masks = [e for e in index if (e["src"], e["path"]) in wanted]
-    files = vt.extract(hits + masks, vt.CACHE / "png")
+    files = vt.extract(hits + masks)
     return [(Path(f).stem, Image.open(f).convert("RGBA")) for f in files]
 
 

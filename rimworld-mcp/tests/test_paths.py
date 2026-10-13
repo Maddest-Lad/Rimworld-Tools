@@ -7,7 +7,7 @@ import pytest
 from src.rimworld_tools import paths
 
 
-def make_game_dir(root: Path, version: str = "1.6.4871 rev573") -> Path:
+def make_game_dir(root: Path, version: str = "1.7.4976 rev1043") -> Path:
     game = root / "steamapps" / "common" / "RimWorld"
     game.mkdir(parents=True)
     (game / "Version.txt").write_text(version, encoding="utf-8")
@@ -43,7 +43,7 @@ def write_libraryfolders(
 class TestVersionAndValidation:
     def test_reads_version(self, tmp_path: Path) -> None:
         make_game_dir(tmp_path)
-        assert paths.read_version(tmp_path / "steamapps/common/RimWorld") == "1.6.4871 rev573"
+        assert paths.read_version(tmp_path / "steamapps/common/RimWorld") == "1.7.4976 rev1043"
 
     def test_rejects_malformed_version(self, tmp_path: Path) -> None:
         game = tmp_path / "game"
@@ -55,7 +55,7 @@ class TestVersionAndValidation:
     def test_validates_by_executable_when_version_missing(self, tmp_path: Path) -> None:
         game = tmp_path / "game"
         game.mkdir()
-        (game / "RimWorldWin64.exe").write_text("", encoding="utf-8")
+        (game / "RimWorld.exe").write_text("", encoding="utf-8")
         assert paths.is_rimworld_dir(game)
 
     def test_name_alone_is_not_enough(self, tmp_path: Path) -> None:

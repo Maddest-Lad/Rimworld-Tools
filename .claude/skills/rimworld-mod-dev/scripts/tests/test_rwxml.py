@@ -16,7 +16,7 @@ import patchops
 import rwxml
 from rwxml import Inheritance, Mod, build_document, load_folders, xml_files
 
-V16 = (1, 6)
+V17 = (1, 7)
 
 
 def write(path: Path, text: str) -> Path:
@@ -42,16 +42,16 @@ def make_mod(tmp: Path, name: str, pid: str | None = None, **files: str) -> Mod:
 
 def test_default_load_folders_prefer_exact_version(tmp_path):
     mod = make_mod(tmp_path, "A")
-    for d in ("1.5", "1.6", "Common"):
+    for d in ("1.6", "1.7", "Common"):
         (mod.root / d).mkdir()
-    assert load_folders(mod, version=V16) == [mod.root / "1.6", mod.root / "Common", mod.root]
+    assert load_folders(mod, version=V17) == [mod.root / "1.7", mod.root / "Common", mod.root]
 
 
 def test_default_load_folders_fall_back_to_newest_older_version(tmp_path):
     mod = make_mod(tmp_path, "A")
-    for d in ("1.4", "1.5", "1.7"):
+    for d in ("1.5", "1.6", "1.8"):
         (mod.root / d).mkdir()
-    assert load_folders(mod, version=V16)[0] == mod.root / "1.5"
+    assert load_folders(mod, version=V17)[0] == mod.root / "1.6"  # a 1.6-only mod on 1.7
 
 
 def test_loadfolders_xml_conditions_and_priority(tmp_path):
@@ -60,39 +60,48 @@ def test_loadfolders_xml_conditions_and_priority(tmp_path):
         "A",
         **{"LoadFolders.xml": """
         <loadFolders>
-          <v1.5><li>/</li><li>1.5</li></v1.5>
-          <v1.6>
+          <v1.6><li>/</li><li>1.6</li></v1.6>
+          <v1.7>
             <li>/</li>
-            <li>1.6</li>
+            <li>1.7</li>
             <li IfModActive="Ludeon.RimWorld.Biotech">Mods/Biotech</li>
             <li IfModNotActive="other.mod_steam">Mods/NoOther</li>
-          </v1.6>
+          </v1.7>
         </loadFolders>"""},
     )
-    got = load_folders(mod, active={"ludeon.rimworld.biotech", "other.mod"}, version=V16)
+    got = load_folders(mod, active={"ludeon.rimworld.biotech", "other.mod"}, version=V17)
     # later entries win (descending priority), IfModNotActive ignores the _steam suffix
-    assert got == [mod.root / "Mods/Biotech", mod.root / "1.6", mod.root]
-    assert load_folders(mod, active=set(), version=V16) == [
+    assert got == [mod.root / "Mods/Biotech", mod.root / "1.7", mod.root]
+    assert load_folders(mod, active=set(), version=V17) == [
         mod.root / "Mods/NoOther",
-        mod.root / "1.6",
+        mod.root / "1.7",
         mod.root,
     ]
 
 
+def test_loadfolders_xml_falls_back_to_newest_older_version(tmp_path):
+    mod = make_mod(
+        tmp_path,
+        "A",
+        **{"LoadFolders.xml": "<loadFolders><v1.6><li>/</li><li>1.6</li></v1.6></loadFolders>"},
+    )
+    assert load_folders(mod, active=set(), version=V17) == [mod.root / "1.6", mod.root]
+
+
 def test_xml_files_first_relative_path_wins(tmp_path, monkeypatch):
-    monkeypatch.setattr(rwxml, "game_version", lambda game=None: (1, 6, 0))
+    monkeypatch.setattr(rwxml, "game_version", lambda game=None: (1, 7, 0))
     mod = make_mod(
         tmp_path,
         "A",
         **{
             "Defs__Things.xml": "<Defs><ThingDef><defName>Root</defName></ThingDef></Defs>",
-            "1.6__Defs__Things.xml": "<Defs><ThingDef><defName>V16</defName></ThingDef></Defs>",
+            "1.7__Defs__Things.xml": "<Defs><ThingDef><defName>V17</defName></ThingDef></Defs>",
             "Common__Defs__Other.xml": "<Defs><ThingDef><defName>Common</defName></ThingDef></Defs>",
         },
     )
     files = xml_files(mod, "Defs")
     assert [f.relative_to(mod.root).as_posix() for f in files] == [
-        "1.6/Defs/Things.xml",
+        "1.7/Defs/Things.xml",
         "Common/Defs/Other.xml",
     ]
 
@@ -121,7 +130,7 @@ BASE = """
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
-    monkeypatch.setattr(rwxml, "game_version", lambda game=None: (1, 6, 0))
+    monkeypatch.setattr(rwxml, "game_version", lambda game=None: (1, 7, 0))
     base = make_mod(tmp_path, "Core", "Ludeon.RimWorld", **{"Defs__Base.xml": BASE})
     return tmp_path, base
 

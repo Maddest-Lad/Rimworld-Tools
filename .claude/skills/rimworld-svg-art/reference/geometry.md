@@ -1,4 +1,4 @@
-# How the engine places textures (1.6.4871, from the decompiled code)
+# How the engine places textures (1.7.4976, from the decompiled code)
 
 Draw to these rules and check with `compose.py` (it implements the linked atlas and accepts
 any layout). Source: `rimworld-mod-dev/scripts/decompile.py <Type> --full`.

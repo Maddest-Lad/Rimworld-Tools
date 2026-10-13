@@ -1,6 +1,6 @@
 ---
 name: rimworld-modpack
-description: Build, curate and maintain RimWorld modpacks (1.6, Windows/Steam) with the rimworld-tools MCP server - search and vet Workshop mods, resolve dependencies and DLC requirements, subscribe safely, sort load order into a cycle-free four-tier order, snapshot/diff for rollback. Use when the user wants a themed or curated modlist, wants to add or remove mods, has load-order, dependency or incompatibility problems, or wants their current mod setup reviewed.
+description: Build, curate and maintain RimWorld modpacks (1.7, Windows/Steam) with the rimworld-tools MCP server - search and vet Workshop mods, resolve dependencies and DLC requirements, subscribe safely, sort load order into a cycle-free four-tier order, snapshot/diff for rollback, and review a pack for RimWorld 1.7 (Waylith) runtime risks. Use when the user wants a themed or curated modlist, wants to add or remove mods, has load-order, dependency or incompatibility problems, wants their current mod setup reviewed, or is moving a pack to 1.7.
 ---
 
 # RimWorld modpack workflow
@@ -54,8 +54,9 @@ Without such a note, a dependency issue is a choice to put to the user, never a 
 |---|---|---|
 | URL or id | `resolve_workshop_url(url)` | `kind`: mod / collection / other / other_game / unknown; `title` |
 | Collection | `collection_expand(url_or_id)` | `pfids[]` + `items[] {pfid, title}`; nested collections are dropped |
-| Theme / name | `workshop_search(query, limit)` | `results[]`, `filters` (Mod + installed version tag, no Translation/Scenario) |
+| Theme / name | `workshop_search(query, limit)` | `results[]`, `filters` (Mod + tag 1.7 or 1.6 on 1.7, no Translation/Scenario) |
 | Popular / new | `workshop_search(sort="trend", days=30)` / `"top"` / `"recent"` / `"updated"` | `sort="relevance"` needs a query |
+| Only mods already marked 1.7-ready | `workshop_search(query, game_version="1.7")` | few on the beta; grows as authors re-upload |
 | Older-version mods | `workshop_search(query, game_version="any")` | only when the user accepts the risk |
 
 `total` (e.g. 1104 for "dubs bad hygiene") is a ranking pool, not a match count. Search is
@@ -67,12 +68,16 @@ published or updated something.
 `workshop_mod_info(pfids)` in chunks of ≤50 (`include_description=True` only when you need the
 text; it's 8 KB max, `description_may_be_truncated` flags the limit). Per item read:
 
-- `tags` — must contain the installed `major.minor` (e.g. `"1.6"`). A mod tagged only `"1.5"`
-  (real case: Titan Vehicles Upgrades, 3484382302) is exactly what later produces
+- `tags` — `"1.7"` = marked 1.7-ready; `"1.6"` only = expected to load on 1.7 (Ludeon: the
+  vast majority of 1.6 mods run unchanged; the game shows them yellow) but untested — fine for
+  XML/content mods, check C#-heavy ones (section 6). A mod tagged only `"1.5"` or older (real
+  case: Titan Vehicles Upgrades, 3484382302) is exactly what later produces
   `XML error … doesn't correspond to any field` at startup.
 - `time_updated` (epoch) vs `time_created` — stale for years + a `replaced` advisory = abandoned.
 - `advisories[]` — `{kind, severity, message, action?}` with kinds `replaced`, `blacklisted`,
   `unpublished`, `version_mismatch`, `missing_dependency`. `action` is directly executable.
+  `version_mismatch` with severity `info` = a 1.6 mod on 1.7 (normal on the beta); `warn` = older
+  versions or a known runtime breaker (Prepatcher).
 - `failed[]` — per-pfid `reason`; report, don't guess.
 - `cache.note` — say when data came from cache if freshness matters.
 
@@ -110,7 +115,30 @@ packageIds).
 4. `modlist_diff(old="<baseline id>", new="current")` → `added`, `removed`, `moved` — that is the
    change report.
 
-## 6. Maintain
+## 6. Moving a pack to 1.7 (Waylith)
+
+1.7 replaced Unity/Mono with Ludeon's engine on .NET 10. Content and ordinary C# mods load
+unchanged; what breaks sits at the runtime layer. Review an existing pack in this order:
+
+1. **Harmony** — `check_mod_updates(["2009463077"])`: installed and current (3.0.0.0 ships a
+   `1.7/` folder with Harmony 3). A stale Harmony or a mod bundling its own 0Harmony breaks
+   every Harmony mod.
+2. **Prepatcher** (`zetrith.prepatcher`, advisory `warn`) — breaks 1.7 startup. With the user's
+   yes, `modlist_disable` it; list the active mods that declare it as a dependency (dry-run
+   `dependency_issues`) — they need their own 1.7 update or go too. Re-check when Prepatcher
+   declares 1.7.
+3. **Performance/engine mods** (FPS limiters, render-thread, GC/tick-rate tweaks, perf
+   analyzers) — they hook what Waylith replaced; many are obsolete (1.7 is 2–4× faster). A/B test
+   each: without first, then with. Mods shipping native DLLs (`links/workshop/<pfid>/**/Native`,
+   non-.NET DLLs) fail outright until updated.
+4. **Everything else** — snapshot, launch, `/rimworld-log-debug`; fix only demonstrated
+   failures. Record decisions in `notes/decisions.md` and accepted 1.6-on-1.7 noise in
+   `notes/accepted.md`.
+
+Saves move between 1.6 and 1.7 both ways; snapshot the mod list before changing it so a
+1.6 rollback (Steam → Properties → Betas → none) is one `modlist_diff` away.
+
+## 7. Maintain
 
 - `check_mod_updates()` (no args = all subscriptions): `outdated[]` = installed copies Steam
   says need updating; Steam applies them itself, usually on next launch.
@@ -125,4 +153,5 @@ packageIds).
   in `links/mods` are untouched. A mod that is *also* in `links/mods` keeps working locally. An
   unsubscribed mod still in `activeMods` shows up as `unresolved` in the sorter — disable it.
 - Startup errors after a change → `/rimworld-log-debug` (its parser attributes XML errors to
-  the mod by `[Source:]`; cross-check with `workshop_mod_info` tags).
+  the mod by `[Source:]` and Harmony errors by patch owner; cross-check with `workshop_mod_info`
+  tags).

@@ -23,7 +23,7 @@ def test_plan_links_derives_logs_and_saves(tmp_path: Path) -> None:
     )
     plans = {p.name: p for p in bootstrap.plan_links(discovered)}
     assert set(plans) == {"game", "config", "logs", "saves"}
-    assert plans["logs"].target == locallow
+    assert plans["logs"].target == locallow / "Logs"
     assert plans["saves"].target == locallow / "Saves"
 
 

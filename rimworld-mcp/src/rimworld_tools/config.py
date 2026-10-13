@@ -17,6 +17,19 @@ RIMWORLD_APP_IDS: dict[str, int] = {
     "odyssey": 3022790,
 }
 
+# 1.7 (Waylith engine) loads 1.6 mods unchanged; the game still marks them "not made for this
+# version" until authors add 1.7. Searches and version advisories treat that pair as low risk.
+RUNS_PREVIOUS_VERSION: dict[str, str] = {"1.7": "1.6"}
+
+# Mods known to break on a version until they declare it (engine/runtime-level, not content).
+KNOWN_RUNTIME_BREAKERS: dict[str, dict[str, str]] = {
+    "1.7": {
+        "zetrith.prepatcher": "Prepatcher's assembly reloader targets Unity's Mono runtime, which "
+        "1.7 replaced; it breaks startup (menu without buttons). Disable it; mods that only used "
+        "it as a Harmony provider work with brrainz.harmony.",
+    }
+}
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 

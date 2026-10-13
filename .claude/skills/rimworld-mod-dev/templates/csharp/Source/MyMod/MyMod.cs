@@ -74,7 +74,7 @@ namespace MyMod
 
         public CompProperties_Pulse Props => (CompProperties_Pulse)props;
 
-        // 1.6: things tick in intervals; delta is how many ticks this call covers.
+        // Things tick in intervals; delta is how many ticks this call covers.
         public override void CompTickInterval(int delta)
         {
             if (parent.IsHashIntervalTick(Props.intervalTicks, delta))

@@ -1,7 +1,7 @@
 # XML Defs
 
 Verified against `Verse.XmlInheritance`, `DirectXmlToObjectNew`, `LoadedModManager`,
-`DefDatabase`, `Def.ConfigErrors` in 1.6.4871.
+`DefDatabase`, `Def.ConfigErrors` in 1.7.4976.
 
 ## Anatomy
 

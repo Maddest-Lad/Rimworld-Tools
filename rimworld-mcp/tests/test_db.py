@@ -155,7 +155,7 @@ class TestReaders:
             sub="1.5",
         )
         assert db.no_version_warning(s, "1.6") == {"only.six"}
-        assert db.no_version_warning(s, "1.4") is None
+        assert db.no_version_warning(s, "1.7") == set()  # synced, no list for a new version yet
         assert db.no_version_warning(s, None) is None
 
     def test_reader_cache_keeps_other_loaded_databases(
@@ -320,8 +320,22 @@ class TestAdvisories:
         unknown = ctx.missing_dependency("nobody.knows", None, None, [], installed)
         assert unknown is not None and unknown.action is None
 
+    def test_previous_version_mod_on_1_7_is_info_not_missing_db(self, tmp_path: Path) -> None:
+        s = _settings(tmp_path)
+        put(s, "no_version_warning", "ModIdsToFix.xml", NOVW, sub="1.6")
+        ctx = advisories.Context.load(s, "1.7")
+        assert "no_version_warning" not in ctx.missing_dbs
+        six = ctx.version("author.stale", ["1.5", "1.6"], False)
+        assert six is not None and six.kind == "version_mismatch" and six.severity == "info"
+        assert "runs 1.6 mods unchanged" in six.message
+        five = ctx.version("author.stale", ["1.5"], False)
+        assert five is not None and five.severity == "warn"
+        broken = ctx.version("zetrith.prepatcher", ["1.5", "1.6"], False)
+        assert broken is not None and broken.severity == "warn" and "Mono" in broken.message
+        assert ctx.version("zetrith.prepatcher", ["1.6", "1.7"], True) is None  # updated release
+
     def test_missing_dbs_notice_once(self, tmp_path: Path) -> None:
-        ctx = advisories.Context.load(_settings(tmp_path), "1.6")
+        ctx = advisories.Context.load(_settings(tmp_path), "1.7")
         assert set(ctx.missing_dbs) == {"steam_db", "use_this_instead", "no_version_warning"}
         notice = ctx.db_notice()
         assert notice is not None and notice["action"] == {"tool": "db_sync"}
@@ -330,6 +344,6 @@ class TestAdvisories:
             {
                 "kind": "version_mismatch",
                 "severity": "warn",
-                "message": "Declares ['1.5']; game is 1.6. May still work — check the Workshop page.",
+                "message": "Declares ['1.5']; game is 1.7. May still work — check the Workshop page.",
             }
         ]

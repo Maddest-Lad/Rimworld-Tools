@@ -1,9 +1,9 @@
 # The RimWorld look, measured
 
-Numbers come from `analyze.py --summary` over the extracted vanilla textures of 1.6.4871
-(Core + Biotech, ~1,000 sprites, 2026-09-25). p10–p90 ranges in brackets. Re-measure a category
-before drawing for it — `vanilla_tex.py --extract '<regex>'`, then
-`analyze.py '<cache>/png/<src>/<folder>/*.png' --summary`.
+Numbers come from `analyze.py --summary` over the vanilla textures (Core + Biotech, ~1,000
+sprites, measured 2026-09-25; 1.7.4976 ships the same art). p10–p90 ranges in brackets.
+Re-measure a category before drawing for it — `vanilla_tex.py --extract '<regex>'`, then
+`analyze.py '<cache>/png-<game version>/<src>/<folder>/*.png' --summary`.
 
 ## Six rules that make it look like RimWorld
 

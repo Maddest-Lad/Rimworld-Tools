@@ -47,7 +47,7 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | `check_mod_updates(pfids?)` | Live subscription/install/download state; outdated lists installed items needing updates |
 | `collection_expand(url_or_id)` | Mod pfids inside a collection (nested collections filtered) |
 | `resolve_workshop_url(url)` | Pasted URL/id → `{pfid, kind: mod\|collection\|other\|other_game\|unknown}` |
-| `workshop_search(query?, limit, game_version?, include_translations, include_scenarios, sort, days)` | Workshop search. Defaults: `Mod` + installed version tag (e.g. `1.6`), Translation/Scenario excluded. `sort`: relevance\|trend\|recent\|top\|updated. Requires the signed-in, online Steam client; no web fallback |
+| `workshop_search(query?, limit, game_version?, include_translations, include_scenarios, sort, days)` | Workshop search. Defaults: `Mod` + installed version tag, on 1.7 a tag group (`1.7` or `1.6`; `RUNS_PREVIOUS_VERSION`); `game_version` takes one tag, a comma list (tag group) or `any`. Translation/Scenario excluded. `sort`: relevance\|trend\|recent\|top\|updated. Requires the signed-in, online Steam client; no web fallback |
 | `modlist_enable(ids, dry_run=True)` / `modlist_disable(ids, dry_run=True)` | Activate/deactivate by packageId or pfid (≤100). Enable appends at the end and reports what the new mods still lack; disable refuses Core and names still-active dependants. Writes snapshot first |
 | `sort_modlist(dry_run=True)` | 4-tier topological load order for ModsConfig.xml. A write snapshots first; a cycle writes nothing |
 | `diagnose_cycles()` | Cycles with per-edge rule sources, incompatible active pairs, missing/inactive dependencies |
@@ -55,7 +55,10 @@ loaded on startup (copy `.env-template`); variables already set in the environme
 | `modlist_diff(old="latest", new="current")` | Added/removed/moved between `current`, `latest`, or a snapshot id |
 
 Typical first session: `environment_status` -> `workshop_subscribe([...])` -> wait for Steam downloads.
-All Workshop operations use the installed game's `steam_api64.dll` in a short-lived helper.
+All Workshop operations use the installed game's `steam_api64.dll` (1.7: install root) in a
+short-lived helper. Discovery validates the game by `Version.txt` (or `RimWorld.exe`); the
+running-game guard checks `RimWorld.exe` and, for a switch back to the 1.6 branch, the Unity
+executable names.
 They require 64-bit Python and an online, signed-in Steam client. Never edit Steam's manifests or
 remove its Workshop directories. Success confirms subscription state, not download completion.
 The helper targets UGC v016 / Utils v010 / User v021; unsupported exports fail clearly.
@@ -122,7 +125,8 @@ copy with the same id. No legacy runtime directories or user mod files are migra
 - `*ByVersion` blocks **replace** the base list when the game's `major.minor` matches (an empty
   block means "none", not "fall back"); `forceLoadAfter`/`forceLoadBefore` are always appended.
 - `supportedVersions` is normalised to `major.minor` at parse time; `version_ok` compares
-  normalised values. Official DLC About.xml omits `<name>` — `DLC_NAMES` fills it.
+  normalised values (true only when the running version is listed — the game's own rule).
+  Official DLC About.xml omits `<name>` — `DLC_NAMES` fills it.
 - Classification checks `PublishedFileId.txt == folder name` **before** `.git`, because some
   Workshop items ship a stray `.git` directory.
 - Dependencies read `steamWorkshopUrl` (RimSort reads `workshopUrl`, which is a bug; accepted as alias).
@@ -137,14 +141,16 @@ Synced into `bin/dbs/<name>/` from GitHub zips. Branches differ and are a 404 ha
 | Steam Workshop DB (`steamDB.json`, ~48MB, ~58k entries) | packageId↔pfid mapping, display names, `blacklist` comments, dependency names |
 | Community Rules | `loadAfter`/`loadBefore`/`loadTop`/`loadBottom` |
 | Use This Instead (`replacements.json.gz`, a **list** keyed by `oldWorkshopId`) | "abandoned → maintained fork" |
-| No Version Warning (**versioned subdirs only**, `1.6/ModIdsToFix.xml`; no root file) | suppressing false `version_mismatch` |
+| No Version Warning (**versioned subdirs only**, `<major.minor>/ModIdsToFix.xml`; no root file; a synced DB without a folder for the running version yields an empty set, not a missing-DB notice) | suppressing false `version_mismatch` |
 
 **Never trust the Steam DB's `unpublished` flag.** It can lag republishing. Native lookup failure
 is also not proof of unpublishing: return the per-item failure reason. Local inventory never emits
 unpublished advisories. Successful native metadata can receive blacklist/replacement advisories.
 
 Advisories are `{kind, severity, message, action?}` with kinds `version_mismatch` (suppressed
-outright when No Version Warning lists the mod), `replaced`, `unpublished`, `blacklisted`,
+outright when No Version Warning lists the mod; `info` when the mod declares the version the
+running one loads unchanged — 1.6 on 1.7, `config.RUNS_PREVIOUS_VERSION`; `warn` otherwise and
+for `config.KNOWN_RUNTIME_BREAKERS` such as Prepatcher on 1.7), `replaced`, `unpublished`, `blacklisted`,
 `missing_dependency` (named via the Steam DB with a ready `workshop_subscribe` action). A missing DB
 produces one top-level `notice` per response, never one per mod, and never an error.
 

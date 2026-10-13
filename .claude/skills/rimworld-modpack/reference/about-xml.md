@@ -6,7 +6,7 @@
 |---|---|---|
 | `packageId` | `author.modname`, case-insensitive | identity; duplicates across local/Steam copies are normal |
 | `name` | display name | tie-breaking in sort; DLC omit it (server fills from `DLC_NAMES`) |
-| `supportedVersions` | list of `major.minor` | `version_ok`; normalised at parse time |
+| `supportedVersions` | list of `major.minor` | `version_ok` (true only if it lists the running version); 1.6-only on 1.7 = `info` advisory |
 | `modDependencies` | packageId + `steamWorkshopUrl` (`workshopUrl` accepted as alias) | `missing_dependency` advisory; a dependency implies `loadAfter` |
 | `loadAfter` / `loadBefore` | soft order hints | edges with source `about:<pid>` |
 | `forceLoadAfter` / `forceLoadBefore` | always appended, even with a `*ByVersion` block | same |
@@ -23,7 +23,7 @@ DLC, Workshop items shipping a stray `.git` directory (classification checks
 
 ```xml
 <ModsConfigData>
-  <version>1.6.4871 rev590</version>
+  <version>1.7.4976 rev1043</version>
   <activeMods>
     <li>ludeon.rimworld</li>
     <li>brrainz.harmony_steam</li>

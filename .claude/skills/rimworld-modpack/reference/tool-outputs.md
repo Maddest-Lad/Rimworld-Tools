@@ -1,6 +1,6 @@
 # rimworld-tools response shapes
 
-Captured from live calls against RimWorld 1.6.4871. Field names are exact; lists are `[]` when
+Captured from live calls against RimWorld 1.7.4976. Field names are exact; lists are `[]` when
 empty. Expected failures come back as `{"error": ..., "hint": ...}` instead of raising.
 
 ## `environment_status()`
@@ -9,18 +9,29 @@ empty. Expected failures come back as `{"error": ..., "hint": ...}` instead of r
 {"ready": true, "account": "7656119…", "rimworld": {
   "game_dir": {"path": "…\\common\\RimWorld", "provenance": "Steam libraryfolders.vdf (AppID 294100)"},
   "mods_dir": {…}, "config_dir": {…}, "workshop_dir": {…}, "steam_root": {…},
-  "version": "1.6.4871 rev590"}}
+  "version": "1.7.4976 rev1043"}}
 ```
 
 ## `list_installed_mods(source?, package_ids?, detail=False, include_invalid=False)`
 
 ```json
-{"game_version": "1.6.4871 rev590", "roots": {"data": …, "mods": …, "workshop": …},
- "count": 2, "by_source": {"steam": 2}, "mods_with_advisories": 0,
+{"game_version": "1.7.4976 rev1043", "roots": {"data": …, "mods": …, "workshop": …},
+ "count": 3, "by_source": {"steam": 3}, "mods_with_advisories": 2,
  "mods": [{"package_id": "brrainz.harmony", "name": "Harmony", "source": "steam",
-           "pfid": "2009463077", "version_ok": true, "active": true,
-           "advisories": [{"kind": "replaced", "severity": "warning", "message": "…", "action": {…}}]}]}
+           "pfid": "2009463077", "version_ok": true, "active": true},
+          {"package_id": "vr.missilegirl", "name": "Missile Girl - Performance Mod", "source": "steam", "pfid": "3712928623",
+           "version_ok": false, "active": true,
+           "advisories": [{"kind": "version_mismatch", "severity": "info",
+                           "message": "Declares ['1.6']; game is 1.7, which runs 1.6 mods unchanged (shown yellow in the mod list). Test it; low-level/native mods are the risk."}]},
+          {"package_id": "zetrith.prepatcher", "…": "…", "version_ok": false,
+           "advisories": [{"kind": "version_mismatch", "severity": "warn",
+                           "message": "Declares ['1.4', '1.5', '1.6']; known to break on 1.7: Prepatcher's assembly reloader targets Unity's Mono runtime, …"}]}]}
 ```
+
+`version_ok` is true only when `supportedVersions` lists the running `major.minor` (what the game
+itself calls compatible). On 1.7 a mod declaring 1.6 gets an `info` advisory (expected to work,
+untested); older versions and known runtime breakers get `warn`. Advisory severities: `info` |
+`warn`.
 
 `active` (and top-level `active_count`) reflect `ModsConfig.xml`; both are absent/null when it
 cannot be read. Filter on `active: false` to find installed-but-inactive mods.
@@ -44,17 +55,23 @@ packageIds present in more than one source.
 ```
 
 With `include_description=True`: `description` and `description_may_be_truncated`. Version
-compatibility = `tags` contains the installed `major.minor`. `visibility` 0 = public.
+tags come from the author's last upload: `"1.7"` = the author marked it 1.7-ready (Harmony:
+`["Mod", "1.7", "1.6", …]`); `"1.6"` only = untested on 1.7 but expected to load. `visibility`
+0 = public.
 
-## `workshop_search(query="", limit=20, game_version=None, include_translations=False, include_scenarios=False, sort="relevance", days=90, refresh=False)`
+## `workshop_search(query="", limit=20, game_version=None, include_translations=False, include_scenarios=False, sort="relevance", days=365, refresh=False)`
 
 ```json
-{"results": [<same item shape as workshop_mod_info>], "total": 1104, "failed": [],
- "filters": {"required_tags": ["Mod", "1.6"], "excluded_tags": ["Translation", "Scenario"], "sort": "relevance"},
- "query": "dubs bad hygiene"}
+{"results": [<same item shape as workshop_mod_info>], "total": 8823, "failed": [],
+ "filters": {"required_tags": ["Mod"], "any_of_tags": ["1.7", "1.6"],
+             "excluded_tags": ["Translation", "Scenario"], "sort": "relevance"},
+ "query": "vanilla expanded framework"}
 ```
 
-`total` is Steam's ranking pool, not a textual match count. Hard cap 100 results.
+Default on 1.7: Mod items tagged 1.7 **or** 1.6 (Steam tag group). `game_version="1.7"` = only
+mods already marked 1.7-ready (58 hits for "harmony" on beta day one); `"1.7,1.6"` = any of a
+list; `"any"` = no version filter. `total` is Steam's ranking pool, not a textual match count.
+Hard cap 100 results.
 
 ## `resolve_workshop_url(url)` / `collection_expand(collection_url_or_id)`
 
@@ -130,7 +147,7 @@ Nothing to change → no write, `hint` says so.
 {"dry_run": true, "active_count": 288, "ok": true, "changed_positions": 127,
  "unresolved": ["sarg.alphaanimals"], "duplicate_active": [], "incompatible_active_pairs": [],
  "dependency_issues": [...], "user_rule_removals_applied": [],
- "order": [{"package_id": "zetrith.prepatcher", "name": "Prepatcher"}, …],
+ "order": [{"package_id": "brrainz.harmony", "name": "Harmony"}, …],
  "tiers": {"tier0": 10, "tier1": 7, "tier2": 266, "tier3": 3},
  "hint": "Unresolved ids (not installed) are kept at the end of the list, not dropped."}
 ```

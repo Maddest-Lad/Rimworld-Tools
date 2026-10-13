@@ -49,7 +49,7 @@ def native_library(settings: Settings) -> Path | None:
     game = paths.discover(settings).game_dir
     if game is None:
         return None
-    dll = Path(game.path) / "RimWorldWin64_Data/Plugins/x86_64/steam_api64.dll"
+    dll = Path(game.path) / "steam_api64.dll"
     return dll if dll.is_file() else None
 
 

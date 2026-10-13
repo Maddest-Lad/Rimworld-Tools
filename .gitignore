@@ -42,7 +42,7 @@ backups/
 .claude/skills/rimworld-mod-dev/.cache/
 .claude/skills/rimworld-mod-dev/templates/csharp/**/bin/
 .claude/skills/rimworld-mod-dev/templates/csharp/**/obj/
-.claude/skills/rimworld-mod-dev/templates/csharp/1.6/
+.claude/skills/rimworld-mod-dev/templates/csharp/1.7/
 
 # SVG art skill: extracted vanilla textures (Ludeon's, reference only)
 .claude/skills/rimworld-svg-art/.cache/

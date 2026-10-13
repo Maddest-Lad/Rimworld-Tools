@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import db
-from .config import Settings
+from .config import KNOWN_RUNTIME_BREAKERS, RUNS_PREVIOUS_VERSION, Settings
 
 
 @dataclass(frozen=True)
@@ -76,8 +76,23 @@ class Context:
     ) -> Advisory | None:
         if version_ok is not False or not package_id:
             return None
+        breaker = KNOWN_RUNTIME_BREAKERS.get(self.game_mm or "", {}).get(package_id.lower())
+        if breaker:
+            return Advisory(
+                "version_mismatch",
+                "warn",
+                f"Declares {supported}; known to break on {self.game_mm}: {breaker}",
+            )
         if self.no_version_warning is not None and package_id.lower() in self.no_version_warning:
             return None  # community says it works; suppressed entirely, not flagged
+        previous = RUNS_PREVIOUS_VERSION.get(self.game_mm or "")
+        if previous and previous in supported:
+            return Advisory(
+                "version_mismatch",
+                "info",
+                f"Declares {supported}; game is {self.game_mm}, which runs {previous} mods "
+                "unchanged (shown yellow in the mod list). Test it; low-level/native mods are the risk.",
+            )
         return Advisory(
             "version_mismatch",
             "warn",

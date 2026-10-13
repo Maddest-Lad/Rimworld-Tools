@@ -1,6 +1,6 @@
 # XML patching (PatchOperations)
 
-Semantics from the decompiled `Verse.PatchOperation*` classes (1.6.4871); `patch_check.py`
+Semantics from the decompiled `Verse.PatchOperation*` classes (1.7.4976); `patch_check.py`
 emulates exactly these.
 
 ## Pipeline

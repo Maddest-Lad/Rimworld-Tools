@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["UnityPy>=1.20", "Pillow>=10.1", "numpy>=1.26"]
+# dependencies = ["zstandard>=0.22", "Pillow>=10.1", "numpy>=1.26"]
 # ///
 """Build reference sprite sheets from an installed mod's textures into `assets/mods/`.
 

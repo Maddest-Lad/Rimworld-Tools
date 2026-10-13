@@ -1,4 +1,4 @@
-"""Offline emulation of RimWorld 1.6 PatchOperations (Verse.PatchOperation*), for patch_check.py.
+"""Offline emulation of RimWorld 1.7 PatchOperations (Verse.PatchOperation*), for patch_check.py.
 
 Semantics follow the decompiled game: an operation "fails" when its worker returns false, after
 `<success>` (Normal | Invert | Always | Never) is applied; the game then logs

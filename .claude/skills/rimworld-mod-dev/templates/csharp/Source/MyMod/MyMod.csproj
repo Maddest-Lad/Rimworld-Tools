@@ -1,12 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- RimWorld 1.6 mod assembly. Lives in <Mod>/Source/MyMod/, builds into <Mod>/1.6/Assemblies/. -->
+  <!-- RimWorld 1.7 mod assembly (.NET 10). Lives in <Mod>/Source/MyMod/, builds into <Mod>/1.7/Assemblies/.
+       Also shipping for 1.6? See reference/csharp.md "One DLL for 1.6 and 1.7". -->
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>MyMod</RootNamespace>
+    <!-- Unique per mod: two mod DLLs with the same assembly name load only once. -->
     <AssemblyName>MyMod</AssemblyName>
-    <OutputPath>..\..\1.6\Assemblies\</OutputPath>
+    <!-- The installed game. workspace/<Mod>/Source/<Proj>/ sits four levels below the repo root;
+         elsewhere pass -p:RimWorldDir=<path to the RimWorld folder>. -->
+    <RimWorldDir Condition="'$(RimWorldDir)' == ''">$(MSBuildProjectDirectory)\..\..\..\..\links\game</RimWorldDir>
+    <OutputPath>..\..\1.7\Assemblies\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <GenerateDependencyFile>false</GenerateDependencyFile>
@@ -14,10 +20,12 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Game reference assemblies (publicized stubs, not Ludeon's DLLs). Pin to the game build if needed. -->
-    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.6.*" />
-    <!-- Compile against Harmony but never ship 0Harmony.dll: the Harmony mod (brrainz.harmony) provides it.
-         Keep this <= the 0Harmony.dll that mod ships (2.4.1 as of 2026-09). -->
-    <PackageReference Include="Lib.Harmony" Version="2.4.1" ExcludeAssets="runtime" />
+    <!-- Compile against the game's own assemblies (there is no 1.7 Krafs.Rimworld.Ref yet); never copied to
+         output. UnityStubs.dll provides the UnityEngine types (Rect, Color, Texture2D, Vector3, GUI ...). -->
+    <Reference Include="$(RimWorldDir)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="$(RimWorldDir)\UnityStubs.dll" Private="false" />
+    <!-- Compile against Harmony but never ship 0Harmony.dll: the Harmony mod (brrainz.harmony) loads
+         Harmony 3 on 1.7 (3.0.0-rc.2 as of 2026-10-12). Pin the exact prerelease. -->
+    <PackageReference Include="Lib.Harmony" Version="3.0.0-rc.2" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>

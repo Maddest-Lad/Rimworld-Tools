@@ -37,8 +37,9 @@ class LinkPlan:
 def plan_links(discovered) -> list[LinkPlan]:
     """Turn the server's discovery result into the set of links to create.
 
-    Saves and logs are derived from the config dir because discovery only validates Config/;
-    Player.log lives in the LocalLow root itself, not a subfolder.
+    Saves and logs are derived from the config dir because discovery only validates Config/.
+    RimWorld 1.7 writes Player.log, Player-prev.log and harmony.log.txt to the Logs/ subfolder;
+    it appears on the first 1.7 launch, so the logs link is planned even before it exists.
     """
     plans: list[LinkPlan] = []
 
@@ -55,7 +56,9 @@ def plan_links(discovered) -> list[LinkPlan]:
         locallow = Path(discovered.config_dir.path).parent
         plans.append(
             LinkPlan(
-                "logs", locallow, "derived from config dir (Player.log lives here)"
+                "logs",
+                locallow / "Logs",
+                "derived from config dir (1.7 writes Player.log here)",
             )
         )
         saves = locallow / "Saves"
@@ -132,6 +135,8 @@ def apply_link(plan: LinkPlan, *, symlinks: bool, force: bool, dry_run: bool) ->
                 _remove_link(link)
         else:
             return "a real directory is in the way; not touching it"
+    if not plan.target.is_dir():
+        return "target missing (start RimWorld once, then rerun)"
     if dry_run:
         return "would create"
     _create_link(link, plan.target, symlinks)

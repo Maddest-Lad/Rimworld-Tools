@@ -18,11 +18,11 @@ class TestGameVersion:
     ) -> None:
 
         monkeypatch.setattr(
-            paths, "discover", lambda _s: paths.RimWorldPaths(version="1.6.4871 rev590")
+            paths, "discover", lambda _s: paths.RimWorldPaths(version="1.7.4976 rev1043")
         )
-        assert workshop.detected_game_version(_settings(tmp_path)) == "1.6"
+        assert workshop.detected_game_version(_settings(tmp_path)) == "1.7"
 
     def test_fallback_when_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
         monkeypatch.setattr(paths, "discover", lambda _s: paths.RimWorldPaths())
-        assert workshop.detected_game_version(_settings(tmp_path)) == "1.6"
+        assert workshop.detected_game_version(_settings(tmp_path)) == "1.7"

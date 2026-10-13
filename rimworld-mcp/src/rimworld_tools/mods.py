@@ -180,7 +180,7 @@ def _li_texts(elem: ET.Element | None) -> list[str]:
 
 
 def _versioned(elem: ET.Element, base: str, game_mm: str | None) -> ET.Element | None:
-    """`<base>ByVersion/<v1.6>` replaces `<base>` entirely when the game version matches."""
+    """`<base>ByVersion/<v1.7>` replaces `<base>` entirely when the game version matches."""
     by = _child(elem, f"{base}ByVersion")
     if by is not None and game_mm:
         keys = {c.tag.lower(): c for c in by}

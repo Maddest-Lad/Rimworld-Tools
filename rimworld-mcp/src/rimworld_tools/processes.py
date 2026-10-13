@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import psutil
 
-RIMWORLD_PROCESSES = frozenset({"rimworldwin64.exe", "rimworldwin.exe"})
+# RimWorld.exe is the 1.7 (Waylith) executable. The Unity names stay because the main Steam branch
+# is still 1.6: a missed running game would overwrite a ModsConfig.xml write on exit.
+RIMWORLD_PROCESSES = frozenset({"rimworld.exe", "rimworldwin64.exe", "rimworldwin.exe"})
 
 
 def running(

@@ -161,13 +161,39 @@ def test_parse_tints():
 
 
 def test_path_normalisation():
-    assert vanilla_tex.norm_core_path("textures/things/item/x") == "things/item/x"
-    assert vanilla_tex.norm_core_path("fonts/x") is None
-    assert (
-        vanilla_tex.norm_bundle_path("assets/data/biotech/textures/things/pawn/y.png")
-        == "things/pawn/y"
+    core = "Resources/Textures/"
+    assert vanilla_tex.norm_pack_path(core + "Things/Item/Steel_a.psd.dds", core) == (
+        "things/item/steel_a"
     )
-    assert vanilla_tex.norm_bundle_path("assets/data/biotech/sounds/z.ogg") is None
+    assert vanilla_tex.norm_pack_path(core + "Things/Plain.dds", core) == "things/plain"
+    assert vanilla_tex.norm_pack_path("Resources/Sounds/Z.ogg", core) is None
+    dlc = "Textures/"
+    assert vanilla_tex.norm_pack_path(dlc + "Things/Pawn/Y.png.dds", dlc) == "things/pawn/y"
+    assert vanilla_tex.norm_pack_path("Sounds/Z.ogg", dlc) is None
+
+
+def test_pack_reads_zstd_members(tmp_path):
+    zstandard = pytest.importorskip("zstandard")
+    import struct
+    import zipfile
+
+    data = b"texture bytes" * 50
+    path = tmp_path / "Assets.zip"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("plain.txt", b"stored")
+        z.writestr("Textures/a.dds", zstandard.ZstdCompressor().compress(data))
+    # Mark the second member zstd (method 93), the way the 1.7 baker stores textures.
+    raw = bytearray(path.read_bytes())
+    central = raw.rfind(bytes.fromhex("504b0102"))  # last central directory record
+    struct.pack_into("<H", raw, central + 10, 93)  # compression method
+    struct.pack_into("<I", raw, central + 24, len(data))  # uncompressed size
+    path.write_bytes(bytes(raw))
+    pack = vanilla_tex.Pack(path)
+    try:
+        assert pack.read("plain.txt") == b"stored"
+        assert pack.read("Textures/a.dds") == data
+    finally:
+        pack.close()
 
 
 def test_search_is_case_insensitive_and_sorted():

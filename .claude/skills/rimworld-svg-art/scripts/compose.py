@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["resvg-py>=0.2", "Pillow>=10", "numpy>=1.26", "UnityPy>=1.20"]
+# dependencies = ["zstandard>=0.22", "resvg-py>=0.2", "Pillow>=10", "numpy>=1.26"]
 # ///
 """Preview several textures together, laid out as the game would draw them.
 
@@ -73,7 +73,7 @@ def load_tex(ref: str, base: Path) -> tuple[Image.Image, Path | None]:
         hits = [e for e in vt.load_index() if vt.key(e) == key]
         if not hits:
             raise SystemExit(f"no vanilla texture {key!r} (vanilla_tex.py --search)")
-        path = vt.extract(hits, vt.CACHE / "png")[0]
+        path = vt.extract(hits)[0]
         return Image.open(path).convert("RGBA"), path
     path = (base / ref).resolve()
     if not path.exists():

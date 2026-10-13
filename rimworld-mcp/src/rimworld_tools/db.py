@@ -378,14 +378,19 @@ def _load_no_version_warning(path: Path) -> set[str]:
 
 
 def no_version_warning(settings: Settings, game_mm: str | None) -> set[str] | None:
-    """Load only the warning list for the installed major.minor game version."""
+    """Load only the warning list for the installed major.minor game version.
+
+    None means the database is missing; an empty set means it has no list for this version yet
+    (e.g. a new beta), which is not a sync problem."""
     root = _dir(settings, "no_version_warning")
     if not game_mm or not root.is_dir():
         return None
     candidates = sorted(p for p in root.rglob("*") if p.name.lower() == "modidstofix.xml")
+    if not candidates:
+        return None
     chosen = next((p for p in candidates if p.parent.name == game_mm), None)
     if chosen is None:
-        return None
+        return set()
     return _cached(chosen, _load_no_version_warning)
 
 

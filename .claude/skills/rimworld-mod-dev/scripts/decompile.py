@@ -4,7 +4,7 @@
     python decompile.py TYPE --full                # whole file (can be thousands of lines)
     python decompile.py TYPE --grep REGEX          # matching lines in that type's file
     python decompile.py --grep REGEX [--limit N]   # search the whole assembly
-    python decompile.py --dll PATH ...             # another assembly (a mod's DLL, 0Harmony)
+    python decompile.py --dll PATH ...             # another assembly (a mod's DLL, UnityStubs)
     python decompile.py --path                     # print the cache directory and exit
 
 The first call decompiles the assembly into `.claude/skills/rimworld-mod-dev/.cache/decompiled/
@@ -29,7 +29,7 @@ from rwxml import GAME, game_version
 
 SKILL = Path(__file__).resolve().parents[1]
 CACHE = SKILL / ".cache" / "decompiled"
-GAME_DLL = GAME / "RimWorldWin64_Data" / "Managed" / "Assembly-CSharp.dll"
+GAME_DLL = GAME / "Assembly-CSharp.dll"  # 1.7 (Waylith): game code sits at the install root
 MEMBER_RE = re.compile(
     r"^\t{1,2}(?:\[[^\]]+\]\s*)*(?:(?:public|protected|internal|private|static|virtual|override|"
     r"abstract|sealed|readonly|const|extern|new|unsafe|partial|event)\s+)+[^;=]*?"

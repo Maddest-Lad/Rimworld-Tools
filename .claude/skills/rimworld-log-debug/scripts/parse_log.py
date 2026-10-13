@@ -1,13 +1,16 @@
-"""Summarise a RimWorld Player.log without loading it into memory.
+"""Summarise a RimWorld 1.7 Player.log without loading it into memory.
 
     python parse_log.py [FILE] [--prev] [--since-startup] [--top N] [--mod PKG] [--grep RE]
                         [--json] [--mods-json PATH] [--all-noise]
 
-Streams the file once, groups consecutive lines into entries (a message plus its stack trace and
-`[Source:]`/`[File:]` annotations), classifies each entry against the signature catalogue in
-../reference/signatures.md, dedupes by a normalised signature and reports per session:
-the active mod list RimWorld printed, the first real error, the top recurring entries with
-counts and the mods implicated. Stdlib only.
+1.7 (Waylith engine) writes `Logs/Player.log` as a header block (`=== RimWorld by Ludeon Studios
+log ===`, `Started:`, `Command:` ...) followed by entries `<date> <time> <LEVEL> [Category] message`;
+every non-stamped line below an entry belongs to it (multi-line message, exception text, the
+captured logging stack, Harmony's patch-owner lines). Pasted fragments without timestamps fall back
+to grouping by line shape. Each entry is classified against the signature catalogue in
+../reference/signatures.md, deduped by a normalised signature and reported per session: game
+version, command line, the first real error, the top recurring entries with counts and the mods
+implicated. Stdlib only.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from pathlib import Path
 
 DEFAULT_LOG = Path(
     os.path.expanduser(
-        "~/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Player.log"
+        "~/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Logs/Player.log"
     )
 )
 WORKSPACE_LOG = Path(__file__).resolve().parents[4] / "links" / "logs" / "Player.log"
@@ -32,30 +35,43 @@ WORKSPACE_LOG = Path(__file__).resolve().parents[4] / "links" / "logs" / "Player
 # ---------------------------------------------------------------- catalogue
 
 # (name, regex, kind, severity). First match wins; order matters for overlapping patterns.
-# kind: noise | load | runtime | save | perf | info
+# kind: noise | load | runtime | save | info
 SIGNATURES: list[tuple[str, re.Pattern[str], str, str]] = [
-    (
-        "fallback_dll",
-        re.compile(r"^Fallback handler could not load library"),
-        "noise",
-        "none",
-    ),
-    ("thread_abort", re.compile(r"ThreadAbortException"), "noise", "none"),
-    ("texture_mult4", re.compile(r"^Texture .* not multiples of 4"), "noise", "none"),
-    ("prepatcher", re.compile(r"^Prepatcher:"), "info", "none"),
-    ("keybind_conflict", re.compile(r"^Key binding conflict:"), "info", "low"),
     ("parsed_as_int", re.compile(r"^Parsed .* as int\."), "noise", "none"),
-    (
-        "workshop_no_folder",
-        re.compile(r"^Created WorkshopItem for (\d+) but there is no folder"),
-        "load",
-        "medium",
-    ),
+    ("keybind_conflict", re.compile(r"^Key binding conflict:"), "info", "low"),
     (
         "dependency_no_url",
         re.compile(r"^Mod .* dependency \(.*\) needs to have <downloadUrl>"),
         "info",
         "low",
+    ),
+    (
+        "prepatcher",
+        re.compile(r"^Prepatcher\b|Prepatcher\.|zetrith\.prepatcher"),
+        "load",
+        "high",
+    ),
+    ("harmony_downgraded", re.compile(r"^HARMONY LOADING PROBLEM"), "load", "high"),
+    (
+        "crash",
+        re.compile(r"^=== CRASH ===|^Crash report written to"),
+        "runtime",
+        "high",
+    ),
+    (
+        "gpu_or_memory_fatal",
+        re.compile(
+            r"graphics device was lost|ran out of (?:video|system) memory",
+            re.IGNORECASE,
+        ),
+        "runtime",
+        "high",
+    ),
+    (
+        "workshop_no_folder",
+        re.compile(r"^Created WorkshopItem for (\d+) but there is no folder"),
+        "load",
+        "medium",
     ),
     (
         "xml_unknown_field",
@@ -89,14 +105,22 @@ SIGNATURES: list[tuple[str, re.Pattern[str], str, str]] = [
     ),
     (
         "assembly_missing",
-        re.compile(r"Cannot resolve dependency to assembly '([^',]+)"),
+        re.compile(r"Could not load (?:file or )?assembly '([^',]+)"),
         "load",
-        "low",
+        "high",
+    ),
+    ("bad_image", re.compile(r"BadImageFormatException"), "load", "high"),
+    ("reflection_typeload", re.compile(r"ReflectionTypeLoadException"), "load", "high"),
+    (
+        "native_missing",
+        re.compile(r"DllNotFoundException|EntryPointNotFoundException"),
+        "runtime",
+        "high",
     ),
     (
-        "reflection_typeload",
-        re.compile(r"ReflectionTypeLoadException"),
-        "load",
+        "platform_unsupported",
+        re.compile(r"PlatformNotSupportedException|is not supported on this platform"),
+        "runtime",
         "high",
     ),
     (
@@ -106,6 +130,55 @@ SIGNATURES: list[tuple[str, re.Pattern[str], str, str]] = [
         "high",
     ),
     ("typeload", re.compile(r"\bTypeLoadException"), "load", "high"),
+    ("invalid_program", re.compile(r"InvalidProgramException"), "runtime", "high"),
+    (
+        "harmony_exception",
+        re.compile(
+            r"HarmonyException|Patching exception in method|Error while patching"
+        ),
+        "runtime",
+        "high",
+    ),
+    (
+        "shader_def_unported",
+        re.compile(r"^Shader def '(\S+)' is not registered"),
+        "load",
+        "low",
+    ),
+    (
+        "shader_source_error",
+        re.compile(
+            r"^Shader '[^']+' (?:reads|declares|vertex|instance|material|required)"
+        ),
+        "load",
+        "medium",
+    ),
+    (
+        "assetbundle_unsupported",
+        re.compile(r"^AssetBundle '([^']+)': "),
+        "load",
+        "low",
+    ),
+    (
+        "assetbundle_failed",
+        re.compile(r"^(?:Failed to read AssetBundle|Unable to open archive file)"),
+        "load",
+        "medium",
+    ),
+    (
+        "unity_stub",
+        re.compile(r": Stub! You may not get expected results"),
+        "runtime",
+        "low",
+    ),
+    (
+        "asset_decode",
+        re.compile(
+            r"^(?:Texture decode (?:failed|produced)|AudioClip '.*' could not be decoded)"
+        ),
+        "load",
+        "low",
+    ),
     ("exception_ticking", re.compile(r"^Exception ticking"), "runtime", "high"),
     (
         "exception_window",
@@ -134,14 +207,6 @@ SIGNATURES: list[tuple[str, re.Pattern[str], str, str]] = [
         "save",
         "medium",
     ),
-    (
-        "harmony_exception",
-        re.compile(
-            r"HarmonyException|Patching exception in method|Error while patching"
-        ),
-        "runtime",
-        "high",
-    ),
     ("null_ref", re.compile(r"NullReferenceException"), "runtime", "high"),
     (
         "generic_exception",
@@ -149,15 +214,39 @@ SIGNATURES: list[tuple[str, re.Pattern[str], str, str]] = [
         "runtime",
         "medium",
     ),
-    (
-        "error_word",
-        re.compile(r"\b(?:error|exception)\b(?!.*Failed count)", re.IGNORECASE),
-        "runtime",
-        "low",
-    ),
 ]
 
-SESSION_START = re.compile(r"^Mono path\[0\] = ")
+# Signatures whose lines all describe one problem: one row, not one per distinct message.
+COLLAPSED = {"prepatcher", "unity_stub"}
+
+# Waylith/engine log categories. Their warnings are platform chatter unless a signature matches.
+ENGINE_CATEGORIES = {
+    "Cursor",
+    "FrameProfiler",
+    "GpuMemory",
+    "GpuMemoryTracker",
+    "GraphicsDevice",
+    "Instrumentation",
+    "JobRuntime",
+    "MainThreadSync",
+    "NativeAllocationRuntime",
+    "Restart",
+    "Shell",
+    "TextureResidency",
+    "Verbose",
+    "Vulkan",
+    "WaylandContent",
+}
+
+SESSION_START = re.compile(r"^=== .+ log ===$")
+HEADER_FIELD = re.compile(
+    r"^(Started|Version|OS|Runtime|Process|Log file|Command):\s+(.*)$"
+)
+ENTRY_HEAD = re.compile(
+    r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (TRACE|DEBUG| INFO| WARN|ERROR| CRIT|     ) "
+    r"(?:\[([^\]]+)\] )?(.*)$"
+)
+GAME_VERSION = re.compile(r"^RimWorld (\d+\.\d+\.\d+ rev\d+)$")
 MODLIST_START = re.compile(r"^Initializing new game with mods:")
 MODLIST_ITEM = re.compile(r"^  - (\S+)")
 SOURCE_LINE = re.compile(r"^\[Source: (.+?)\]")
@@ -165,10 +254,24 @@ FILE_LINE = re.compile(r"^\[File: (.+?)\]")
 REF_LINE = re.compile(r"^\[Ref ([0-9A-F]+)\]( Duplicate stacktrace)?")
 BRACKET_TAG = re.compile(r"^(?:<color=[^>]+>)?\[([^\]\n]{2,40})\]")
 STACK_FRAME = re.compile(r"^\s*at (\S+?) ?\(")
+# The stack Waylith captures for every log call (4 spaces, IL offset) vs exception text (3 spaces).
+LOG_FRAME = re.compile(r"^    at (\S+?)\(.*\) \[0x[0-9A-F]+\]")
+LOGGER_FRAMES = (
+    "Brutal.Logging.",
+    "Verse.Log.",
+    "UnityEngine.Debug.",
+    "UnityStubs.Internal.",
+)
+# HarmonyMod (1.7) appends the patches on every patched method in a trace:
+#     - PREFIX <harmony id>: Verse.Pawn.Tick <- Void MyMod.Patch_Tick:Prefix(Pawn __instance)
+PATCH_OWNER = re.compile(
+    r"^\s+- (?:INNER )?(?:TRANSPILER|PREFIX|POSTFIX|FINALIZER) (\S+): \S+ <- \S+ ([\w.+`]+):"
+)
+# Shape-based grouping, only for pasted text without timestamps.
 CONTINUATION = re.compile(
-    r"^(?:\s+at |\s*\(wrapper |\[Source: |\[File: |\[Ref |Possible Matches:|Context: |\s*$|"
+    r"^(?:\s+at |\s+- |\[Source: |\[File: |\[Ref |Possible Matches:|Context: |\s*$|"
     r"--- End of|Parameter name:|Rethrow as |\s+--- |Error in |\s*Verse\.|\s*RimWorld\.|"
-    r"(?:System|Verse|RimWorld|UnityEngine)\.[\w.]*Exception\b|\s*at \S)"
+    r"(?:System|Verse|RimWorld)\.[\w.]*Exception\b|\s*at \S|  - )"
 )
 WORKSHOP_PATH = re.compile(r"[\\/]workshop[\\/]content[\\/]294100[\\/](\d+)[\\/]")
 MODS_PATH = re.compile(r"[\\/]RimWorld[\\/]Mods[\\/]([^\\/]+)[\\/]")
@@ -176,14 +279,24 @@ NOISE_TOKENS = re.compile(
     r"(0x[0-9A-Fa-f]+|<[0-9a-f]{32}>|thread=\d+|\[Ref [0-9A-F]+\]|\d+(?:\.\d+)?(?:ms|s)\b|"
     r"ID \d+|\bmap with ID \d+|-\d{8,}\b|\b\d{5,}\b)"
 )
+# Frames never blamed on a mod: .NET, the Waylith engine and its Unity layer, the game, Harmony.
 ENGINE_FRAMES = (
     "System.",
+    "Microsoft.",
+    "Internal.",
+    "Brutal.",
+    "Waylith.",
     "UnityEngine.",
+    "UnityStubs.",
+    "RimWorldWaylith.",
     "Verse.",
     "RimWorld.",
+    "LudeonTK.",
     "HarmonyLib.",
-    "Mono.",
-    "(wrapper",
+    "MonoMod.",
+    "HarmonyMod.",
+    ".lambda_method",
+    "lambda_method",
 )
 
 
@@ -192,6 +305,10 @@ class Entry:
     line_no: int
     message: str
     lines: list[str] = field(default_factory=list)
+    level: str | None = (
+        None  # TRACE | DEBUG | INFO | WARN | ERROR | CRIT; None when unstamped
+    )
+    category: str | None = None
     ref: str | None = None
     duplicate_of: str | None = None
 
@@ -218,6 +335,8 @@ class Signature:
 @dataclass
 class Session:
     start_line: int
+    meta: dict[str, str] = field(default_factory=dict)
+    game_version: str | None = None
     mods: list[str] = field(default_factory=list)
     signatures: OrderedDict[str, Signature] = field(default_factory=OrderedDict)
     noise: Counter = field(default_factory=Counter)
@@ -235,34 +354,39 @@ def iter_lines(path: Path) -> Iterator[str]:
             yield line.rstrip("\r\n")
 
 
-def iter_entries(lines: Iterable[str]) -> Iterator[Entry | tuple[str, int, str]]:
-    """Yield Entry objects, or ('session', line_no, text) / ('mod', line_no, packageId) markers.
+def iter_entries(lines: Iterable[str]) -> Iterator[Entry | tuple[str, int, object]]:
+    """Yield Entry objects, or ('session', line_no, text) / ('meta', line_no, (key, value)) markers.
 
-    An entry is a top-level line followed by continuation lines (stack frames, annotations).
-    Blank lines are rare in Player.log, so continuation is decided by line shape, not gaps.
+    In a stamped (1.7) log an entry starts at a timestamp line and owns every following line until
+    the next one. Unstamped text (a pasted trace) is grouped by line shape instead.
     """
     current: Entry | None = None
-    in_modlist = False
+    stamped = False
+    in_header = False
     for n, line in enumerate(lines, 1):
         if SESSION_START.match(line):
             if current:
                 yield current
                 current = None
+            stamped = False
+            in_header = True
             yield ("session", n, line)
             continue
-        if MODLIST_START.match(line):
+        head = ENTRY_HEAD.match(line)
+        if in_header and not head:
+            m = HEADER_FIELD.match(line)
+            if m:
+                yield ("meta", n, (m.group(1), m.group(2)))
+            continue
+        in_header = False
+        if head:
+            stamped = True
             if current:
                 yield current
-                current = None
-            in_modlist = True
+            _, level, category, message = head.groups()
+            current = Entry(n, message, [message], level.strip() or None, category)
             continue
-        if in_modlist:
-            m = MODLIST_ITEM.match(line)
-            if m:
-                yield ("mod", n, m.group(1))
-                continue
-            in_modlist = False
-        if current is not None and CONTINUATION.match(line):
+        if current is not None and (stamped or CONTINUATION.match(line)):
             current.lines.append(line)
             m = REF_LINE.match(line)
             if m:
@@ -280,23 +404,37 @@ def iter_entries(lines: Iterable[str]) -> Iterator[Entry | tuple[str, int, str]]
 
 def classify(entry: Entry) -> tuple[str, str, str] | None:
     head = entry.message
-    # Exceptions are often announced on the line after "Exception thrown from thread=..." etc.
-    probe = head if len(entry.lines) == 1 else "\n".join(entry.lines[:3])
+    # Exceptions are often announced on the line after the message ("...:\nSystem.X: ...").
+    # Stack frames are left out: every 1.7 entry carries the logging call's stack.
+    text = [line for line in entry.lines[:8] if not STACK_FRAME.match(line)][:3]
+    probe = "\n".join(text)
     for name, rx, kind, sev in SIGNATURES:
         if rx.search(head) or rx.search(probe):
             return name, kind, sev
+    if entry.level in ("ERROR", "CRIT"):
+        return "logged_error", "runtime", "medium"
+    if entry.level == "WARN":
+        if entry.category in ENGINE_CATEGORIES:
+            return "engine_warning", "info", "low"
+        return "logged_warning", "runtime", "low"
+    if entry.level is None and re.search(
+        r"\b(?:error|exception)\b", head, re.IGNORECASE
+    ):
+        return "error_word", "runtime", "low"  # unstamped paste: no level to go by
     return None
 
 
 def normalise(entry: Entry, name: str) -> str:
     """Signature key: catalogue name + message with volatile tokens stripped + first mod frame."""
+    if name in COLLAPSED:
+        return f"{name}|"
     msg = NOISE_TOKENS.sub("#", entry.message)[:160]
     frame = first_mod_frame(entry) or ""
     return f"{name}|{msg}|{frame}"
 
 
 def first_mod_frame(entry: Entry) -> str | None:
-    """First stack frame whose namespace is not engine/vanilla. Harmony wrappers are skipped."""
+    """First stack frame whose namespace is not engine/vanilla. Harmony replacements are skipped."""
     for line in entry.lines:
         m = STACK_FRAME.match(line)
         if not m:
@@ -310,15 +448,46 @@ def first_mod_frame(entry: Entry) -> str | None:
     return None
 
 
+def sample_lines(entry: Entry, keep_log_frames: int = 4) -> list[str]:
+    """Message, exception text and patch owners in full; the logging call's stack trimmed to the
+    first few frames after the logger itself (where the call came from)."""
+    out: list[str] = []
+    kept = 0
+    for line in entry.lines:
+        m = LOG_FRAME.match(line)
+        if m:
+            if m.group(1).startswith(LOGGER_FRAMES):
+                continue
+            kept += 1
+            if kept > keep_log_frames:
+                continue
+        out.append(line)
+    return out
+
+
 def harmony_patch_frames(entry: Entry) -> list[str]:
+    """Methods Harmony replaced that appear in the trace. 1.7 prints them as
+    `MonoMod.Utils.DynamicMethodDefinition.Verse.GenText.CapitalizeFirst_Patch1(String str)`.
+    """
     out = []
     for line in entry.lines:
-        if "(wrapper dynamic-method)" in line or "_Patch" in line or "DMD<" in line:
-            m = re.search(r"([\w.]+)_Patch\d*", line) or re.search(
-                r"DMD<[^>]*>\?\S*?([\w.]+)", line
-            )
+        if "_Patch" in line or "DMD<" in line:
+            m = re.search(
+                r"at (?:MonoMod\.Utils\.DynamicMethodDefinition\.)?([\w.]+?)_Patch\d+",
+                line,
+            ) or re.search(r"DMD<[^>]*>\?\S*?([\w.]+)", line)
             if m:
                 out.append(m.group(1))
+    return out
+
+
+def patch_owners(entry: Entry) -> list[tuple[str, str]]:
+    """(harmony id, patch class) pairs that HarmonyMod listed under the trace."""
+    out = []
+    for line in entry.lines:
+        m = PATCH_OWNER.match(line)
+        if m:
+            out.append((m.group(1), m.group(2)))
     return out
 
 
@@ -334,25 +503,32 @@ def attribute(entry: Entry, mod_index: dict[str, str]) -> list[str]:
             w = WORKSHOP_PATH.search(m.group(1))
             if w:
                 found.append(f"pfid:{w.group(1)}")
-            l = MODS_PATH.search(m.group(1))
-            if l:
-                found.append(f"local:{l.group(1)}")
+            loc = MODS_PATH.search(m.group(1))
+            if loc:
+                found.append(f"local:{loc.group(1)}")
     m = BRACKET_TAG.match(entry.message)
     if m and not SOURCE_LINE.match(entry.message) and not REF_LINE.match(entry.message):
         found.append(f"tag:{m.group(1)}")
+    m = re.match(r"^AssetBundle '([^']+)'", entry.message)
+    if m:
+        found.append(f"bundle:{m.group(1)}")
     frame = first_mod_frame(entry)
     if frame:
         ns = frame.split(".")[0]
         found.append(f"ns:{mod_index.get(ns.lower(), ns)}")
-    for patcher in harmony_patch_frames(entry):
-        ns = patcher.split(".")[0]
+    for owner, patch_class in patch_owners(entry):
+        ns = patch_class.split(".")[0]
+        found.append(
+            f"patch:{mod_index.get(owner.lower(), mod_index.get(ns.lower(), owner))}"
+        )
+    for patched in harmony_patch_frames(entry):
+        ns = patched.split(".")[0]
         found.append(f"harmony:{mod_index.get(ns.lower(), ns)}")
     for line in entry.lines:
         w = WORKSHOP_PATH.search(line)
         if w and f"pfid:{w.group(1)}" not in found:
             found.append(f"pfid:{w.group(1)}")
             break
-    # Preserve order, drop duplicates.
     return list(OrderedDict.fromkeys(found))
 
 
@@ -365,15 +541,24 @@ def parse(
         if isinstance(item, tuple):
             kind, n, val = item
             if kind == "session":
-                if sessions[-1].entries == 0 and not sessions[-1].mods:
+                if sessions[-1].entries == 0 and not sessions[-1].meta:
                     sessions[-1].start_line = n
                 else:
                     sessions.append(Session(start_line=n))
-            else:
-                sessions[-1].mods.append(val)
+            elif kind == "meta":
+                key, value = val
+                sessions[-1].meta[key] = value
             continue
         s = sessions[-1]
         s.entries += 1
+        m = GAME_VERSION.match(item.message)
+        if m:
+            s.game_version = m.group(1)
+        if MODLIST_START.match(item.message):
+            s.mods = [
+                m.group(1) for line in item.lines[1:] if (m := MODLIST_ITEM.match(line))
+            ]
+            continue
         if grep and not grep.search(item.text):
             continue
         cls = classify(item)
@@ -391,9 +576,8 @@ def parse(
                 s.refs[item.ref] = key
         sig = s.signatures.get(key)
         if sig is None:
-            sig = Signature(
-                name, kind, sev, key, "\n".join(item.lines[:12]), item.line_no
-            )
+            sample = "\n".join(sample_lines(item)[:14])
+            sig = Signature(name, kind, sev, key, sample, item.line_no)
             s.signatures[key] = sig
             if (
                 s.first_error is None
@@ -419,6 +603,7 @@ def load_mod_index(path: Path) -> dict[str, str]:
         pid = m.get("package_id") or m.get("packageId") or ""
         if not pid:
             continue
+        index.setdefault(pid.lower(), pid)  # Harmony ids are often the packageId
         author, _, name = pid.partition(".")
         for hint in (name, author, m.get("name", "")):
             if hint:
@@ -445,6 +630,9 @@ def ranked(session: Session, top: int, mod: str | None) -> list[Signature]:
 def to_dict(session: Session, top: int, mod: str | None) -> dict:
     return {
         "start_line": session.start_line,
+        "game_version": session.game_version,
+        "started": session.meta.get("Started"),
+        "command": session.meta.get("Command"),
         "mod_count": len(session.mods),
         "mods": session.mods,
         "entries": session.entries,
@@ -471,9 +659,14 @@ def render_markdown(
 ) -> str:
     out: list[str] = []
     for i, s in enumerate(sessions, 1):
+        game = f"RimWorld {s.game_version}, " if s.game_version else ""
+        started = f", started {s.meta['Started']}" if "Started" in s.meta else ""
         out.append(
-            f"## Session {i} (line {s.start_line}) — {s.entries} entries, {len(s.mods)} active mods"
+            f"## Session {i} (line {s.start_line}{started}) — {game}{s.entries} entries"
+            + (f", {len(s.mods)} mods in new game" if s.mods else "")
         )
+        if "Command" in s.meta:
+            out.append(f"Command: `{s.meta['Command']}`")
         if s.first_error:
             fe = s.first_error
             out.append(
@@ -521,7 +714,7 @@ def resolve_log(arg: str | None, prev: bool) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Summarise a RimWorld Player.log")
+    ap = argparse.ArgumentParser(description="Summarise a RimWorld 1.7 Player.log")
     ap.add_argument("file", nargs="?", help="log file (default: links/logs/Player.log)")
     ap.add_argument(
         "--prev", action="store_true", help="use Player-prev.log next to the file"
@@ -531,12 +724,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument(
-        "--mod", help="only entries attributed to this mod/pfid/namespace substring"
+        "--mod",
+        help="only entries attributed to this mod/pfid/namespace/harmony-id substring",
     )
     ap.add_argument("--grep", help="regex; only entries whose text matches")
     ap.add_argument("--json", action="store_true", help="JSON instead of markdown")
     ap.add_argument(
-        "--mods-json", help="saved list_installed_mods output for namespace attribution"
+        "--mods-json", help="saved list_installed_mods output for attribution"
     )
     ap.add_argument("--all-noise", action="store_true", help="list every noise bucket")
     args = ap.parse_args(argv)

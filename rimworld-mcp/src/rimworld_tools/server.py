@@ -115,7 +115,7 @@ async def resolve_workshop_url(url: str, refresh: bool = False) -> dict[str, Any
 async def workshop_search(
     query: str = "",
     limit: int = 20,
-    game_version: str = "1.6",
+    game_version: str | None = None,
     include_translations: bool = False,
     include_scenarios: bool = False,
     sort: str = "relevance",
@@ -123,7 +123,8 @@ async def workshop_search(
     refresh: bool = False,
 ) -> dict[str, Any]:
     """
-    Search the RimWorld Workshop. Defaults filter to Mod items tagged with the installed game
+    Search the RimWorld Workshop. Defaults to Mod items tagged with the installed version; on 1.7
+    also 1.6-tagged mods (1.7 runs them unchanged). game_version: "1.7", "1.7,1.6" or "any".
     Results are cached 1h per distinct query+filters; refresh=true refetches.
     sort: relevance (needs query) | trend (uses days) | recent | top | updated.
     Example: workshop_search("vanilla expanded framework")
